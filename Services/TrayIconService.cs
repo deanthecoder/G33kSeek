@@ -34,15 +34,6 @@ public sealed class TrayIconService : IDisposable
         var icon = LoadIcon();
         var menu = new NativeMenu
         {
-            new NativeMenuItem("Show Launcher")
-            {
-                Command = new RelayCommand(_ => m_launcherWindowService.Show())
-            },
-            new NativeMenuItem("Hide Launcher")
-            {
-                Command = new RelayCommand(_ => m_launcherWindowService.Hide())
-            },
-            new NativeMenuItemSeparator(),
             new NativeMenuItem("Exit")
             {
                 Command = new RelayCommand(_ => m_exitApplication())

@@ -30,6 +30,10 @@ public class App : Application
 
             m_trayIconService.Initialize();
             m_globalHotkeyService.Start();
+
+#if DEBUG
+            launcherWindowService.Show();
+#endif
         }
 
         base.OnFrameworkInitializationCompleted();

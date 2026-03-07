@@ -24,6 +24,7 @@ The UI is built with **Avalonia** and the codebase is written in **C# (.NET)**.
 - New behaviour should normally be covered by unit tests.
 - Keep solutions **simple and performant** — this application must feel instant.
 - Avoid heavy dependencies unless clearly justified.
+- Git commit messages must start with `Feature:`, `Fix:`, or `Other:`, use sentence case, and end with a full stop.
 
 ---
 
