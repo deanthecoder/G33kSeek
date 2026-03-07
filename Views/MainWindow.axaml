@@ -1,0 +1,90 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:models="clr-namespace:G33kSeek.Models"
+        xmlns:viewModels="clr-namespace:G33kSeek.ViewModels"
+        mc:Ignorable="d"
+        x:Class="G33kSeek.Views.MainWindow"
+        x:DataType="viewModels:MainWindowViewModel"
+        Width="760"
+        Height="220"
+        MinWidth="640"
+        MinHeight="220"
+        MaxWidth="840"
+        MaxHeight="320"
+        Background="Transparent"
+        BorderBrush="Transparent"
+        BorderThickness="0"
+        CanResize="False"
+        ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaChromeHints="NoChrome"
+        Icon="/Assets/app.ico"
+        Padding="0"
+        ShowInTaskbar="False"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        WindowStartupLocation="CenterScreen"
+        SystemDecorations="None"
+        Topmost="True"
+        Title="G33kSeek">
+  <Design.DataContext>
+    <viewModels:MainWindowViewModel />
+  </Design.DataContext>
+
+  <Grid Margin="18">
+    <Border Classes="launcherShell">
+      <Grid RowDefinitions="Auto,Auto,*">
+        <StackPanel Margin="0,0,0,14"
+                    Spacing="6">
+          <TextBlock Classes="launcherEyebrow"
+                     Text="KEYBOARD LAUNCHER" />
+          <TextBlock Classes="launcherTitle"
+                     Text="G33kSeek" />
+          <TextBlock Classes="launcherHint"
+                     Text="{Binding StatusText}" />
+        </StackPanel>
+
+        <Border Grid.Row="1"
+                Classes="searchSurface">
+          <TextBox x:Name="SearchTextBox"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   Classes="searchBox"
+                   FontSize="24"
+                   Text="{Binding SearchText, Mode=TwoWay}"
+                   Watermark="Type to search files, apps, commands, or the web..." />
+        </Border>
+
+        <Border Grid.Row="2"
+                Margin="0,14,0,0"
+                Classes="resultsPanel">
+          <ListBox x:Name="ResultsListBox"
+                   Background="Transparent"
+                   BorderThickness="0"
+                   ItemsSource="{Binding Results}"
+                   SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="models:LauncherResult">
+                <Grid ColumnDefinitions="*,Auto"
+                      Margin="2">
+                  <StackPanel Spacing="2">
+                    <TextBlock FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="{Binding Title}" />
+                    <TextBlock Classes="resultSubtitle"
+                               Text="{Binding Subtitle}" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="1"
+                             VerticalAlignment="Center"
+                             Classes="resultPrefix"
+                             Text="{Binding PrefixHint}" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </Border>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>

@@ -1,0 +1,24 @@
+{
+  "ProductName": "G33kSeek",
+  "CompanyName": "Dean Edis (DeanTheCoder)",
+  "PublisherUrl": "https://github.com/deanthecoder",
+  "BundleIdentifier": "com.deanthecoder.g33kseek",
+  "Executable": "G33kSeek",
+  "Project": "G33kSeek.csproj",
+  "Version": "1.0",
+  "Win": {
+    "InnoScript": "Installer/templates/inno.iss",
+    "IconIco": "Assets/app.ico",
+    "GUID": "{FF470274-5F77-4A93-8786-978DE95904F1}",
+    "RuntimeIdentifier": "win-x64",
+    "InstallOpenAL": false
+  },
+  "Mac": {
+    "RuntimeIdentifiers": [
+      "osx-arm64",
+      "osx-x64"
+    ],
+    "IconIcns": "",
+    "InfoPlist": "Installer/templates/Info.plist"
+  }
+}
