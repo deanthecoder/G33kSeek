@@ -31,6 +31,8 @@ public class MainWindowViewModel : ViewModelBase
     private QueryResult m_selectedResult;
     private int m_visibleResultCount;
     private bool m_hasResults;
+    private double m_resultsPanelOpacity;
+    private double m_resultsPanelMaxHeight;
     private CancellationTokenSource m_queryCancellation;
 
     public MainWindowViewModel(QueryEngine queryEngine = null)
@@ -78,6 +80,18 @@ public class MainWindowViewModel : ViewModelBase
         private set => SetField(ref m_hasResults, value);
     }
 
+    public double ResultsPanelOpacity
+    {
+        get => m_resultsPanelOpacity;
+        private set => SetField(ref m_resultsPanelOpacity, value);
+    }
+
+    public double ResultsPanelMaxHeight
+    {
+        get => m_resultsPanelMaxHeight;
+        private set => SetField(ref m_resultsPanelMaxHeight, value);
+    }
+
     private async Task RefreshResultsAsync()
     {
         m_queryCancellation?.Cancel();
@@ -94,6 +108,8 @@ public class MainWindowViewModel : ViewModelBase
         SelectedResult = Results.Count > 0 ? Results[0] : null;
         VisibleResultCount = Results.Count;
         HasResults = Results.Count > 0;
+        ResultsPanelOpacity = HasResults ? 1 : 0;
+        ResultsPanelMaxHeight = HasResults ? 322 : 0;
         StatusText = string.IsNullOrWhiteSpace(response.StatusText)
             ? "Ready."
             : response.StatusText;

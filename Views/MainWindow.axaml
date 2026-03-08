@@ -31,60 +31,83 @@
   </Design.DataContext>
 
   <Grid Margin="18">
-    <Border Classes="launcherShell">
-      <Grid RowDefinitions="Auto,Auto,Auto">
-        <StackPanel Margin="0,0,0,14"
-                    Spacing="6">
-          <TextBlock Classes="launcherEyebrow"
-                     Text="KEYBOARD LAUNCHER" />
-          <TextBlock Classes="launcherTitle"
-                     Text="G33kSeek" />
-          <TextBlock Classes="launcherHint"
-                     Text="{Binding StatusText}" />
-        </StackPanel>
-
-        <Border Grid.Row="1"
-                Classes="searchSurface">
-          <TextBox x:Name="SearchTextBox"
-                   Background="Transparent"
-                   BorderThickness="0"
-                   Classes="searchBox"
-                   FontSize="24"
-                   Text="{Binding SearchText, Mode=TwoWay}"
-                   Watermark="Type to search files, apps, commands, or the web..." />
+    <Border Classes="launcherShell"
+            Background="#E0000000"
+            ClipToBounds="True"
+            Padding="0">
+      <Grid>
+        <Border>
+          <Border.Background>
+            <ImageBrush Source="/Assets/main-window-bg.jpg"
+                        Opacity="0.25"
+                        Stretch="UniformToFill" />
+          </Border.Background>
         </Border>
 
-        <Border Grid.Row="2"
-                Margin="0,14,0,0"
-                MaxHeight="322"
-                IsVisible="{Binding HasResults}"
-                Classes="resultsPanel">
-          <ListBox x:Name="ResultsListBox"
-                   Background="Transparent"
-                   BorderThickness="0"
-                   ItemsSource="{Binding Results}"
-                   ScrollViewer.VerticalScrollBarVisibility="Auto"
-                   SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <Grid ColumnDefinitions="*,Auto"
-                      Margin="2">
-                  <StackPanel Spacing="2">
-                    <TextBlock FontSize="16"
-                               FontWeight="SemiBold"
-                               Text="{Binding Title}" />
-                    <TextBlock Classes="resultSubtitle"
-                               Text="{Binding Subtitle}" />
-                  </StackPanel>
-                  <TextBlock Grid.Column="1"
-                             VerticalAlignment="Center"
-                             Classes="resultPrefix"
-                             Text="{Binding TrailingText}" />
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </Border>
+        <Grid Margin="18"
+              RowDefinitions="Auto,Auto,Auto">
+          <StackPanel Margin="0,0,0,14"
+                      Spacing="6">
+            <TextBlock Classes="launcherEyebrow"
+                       Text="KEYBOARD LAUNCHER" />
+            <TextBlock Classes="launcherTitle"
+                       Text="G33kSeek" />
+            <TextBlock Classes="launcherHint"
+                       Text="{Binding StatusText}" />
+          </StackPanel>
+
+          <Border Grid.Row="1"
+                  Classes="searchSurface">
+            <TextBox x:Name="SearchTextBox"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Classes="searchBox"
+                     FontSize="24"
+                     Text="{Binding SearchText, Mode=TwoWay}"
+                     Watermark="Type to search files, apps, commands, or the web..." />
+          </Border>
+
+          <Border Grid.Row="2"
+                  Margin="0,14,0,0"
+                  MaxHeight="{Binding ResultsPanelMaxHeight}"
+                  Opacity="{Binding ResultsPanelOpacity}"
+                  IsVisible="{Binding HasResults}"
+                  Classes="resultsPanel">
+            <Border.Transitions>
+              <Transitions>
+                <DoubleTransition Property="MaxHeight"
+                                  Duration="0:0:0.18" />
+                <DoubleTransition Property="Opacity"
+                                  Duration="0:0:0.12" />
+              </Transitions>
+            </Border.Transitions>
+            <ListBox x:Name="ResultsListBox"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     ItemsSource="{Binding Results}"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <Grid ColumnDefinitions="*,Auto"
+                        Margin="2">
+                    <StackPanel Spacing="2">
+                      <TextBlock FontSize="16"
+                                 FontWeight="SemiBold"
+                                 Text="{Binding Title}" />
+                      <TextBlock Classes="resultSubtitle"
+                                 Text="{Binding Subtitle}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               VerticalAlignment="Center"
+                               Classes="resultPrefix"
+                               Text="{Binding TrailingText}" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </Border>
+        </Grid>
       </Grid>
     </Border>
   </Grid>
