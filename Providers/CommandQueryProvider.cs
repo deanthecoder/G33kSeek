@@ -10,6 +10,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -28,22 +29,29 @@ namespace G33kSeek.Providers;
 /// </remarks>
 public sealed class CommandQueryProvider : IQueryProvider
 {
+    private readonly Func<CommonFolderTargets> m_commonFolderTargetsAccessor;
     private readonly Func<Guid> m_guidFactory;
     private readonly Func<IReadOnlyList<string>> m_ipAddressesAccessor;
     private readonly bool m_isMacOS;
     private readonly bool m_isWindows;
 
     public CommandQueryProvider()
-        : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), () => Guid.NewGuid(), GetLocalIpAddresses)
+        : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), () => Guid.NewGuid(), GetLocalIpAddresses, GetCommonFolderTargets)
     {
     }
 
-    internal CommandQueryProvider(bool isMacOS, bool isWindows, Func<Guid> guidFactory, Func<IReadOnlyList<string>> ipAddressesAccessor)
+    internal CommandQueryProvider(
+        bool isMacOS,
+        bool isWindows,
+        Func<Guid> guidFactory,
+        Func<IReadOnlyList<string>> ipAddressesAccessor,
+        Func<CommonFolderTargets> commonFolderTargetsAccessor)
     {
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
         m_guidFactory = guidFactory ?? throw new ArgumentNullException(nameof(guidFactory));
         m_ipAddressesAccessor = ipAddressesAccessor ?? throw new ArgumentNullException(nameof(ipAddressesAccessor));
+        m_commonFolderTargetsAccessor = commonFolderTargetsAccessor ?? throw new ArgumentNullException(nameof(commonFolderTargetsAccessor));
     }
 
     public string Prefix => ">";
@@ -62,7 +70,7 @@ public sealed class CommandQueryProvider : IQueryProvider
         var commands = GetCommands()
             .Where(command => Matches(query, command))
             .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(CreateResult)
+            .Select(CreateQueryResult)
             .ToArray();
 
         if (commands.Length == 0)
@@ -79,8 +87,8 @@ public sealed class CommandQueryProvider : IQueryProvider
         return Task.FromResult(new QueryResponse(commands, statusText));
     }
 
-    private static QueryResult CreateResult(CommandDefinition definition) =>
-        definition.CreateResult();
+    private static QueryResult CreateQueryResult(CommandDefinition definition) =>
+        definition.CreateQueryResult();
 
     private QueryResult CreateGuidResult()
     {
@@ -117,6 +125,17 @@ public sealed class CommandQueryProvider : IQueryProvider
                 successMessage: "IP address copied."));
     }
 
+    private IReadOnlyList<CommandDefinition> CreateFolderCommands()
+    {
+        var targets = m_commonFolderTargetsAccessor();
+        var commands = new List<CommandDefinition>();
+        AddFolderCommand(commands, "desktop", "Open the Desktop folder.", targets.DesktopDirectory);
+        AddFolderCommand(commands, "documents", "Open the Documents folder.", targets.DocumentsDirectory);
+        AddFolderCommand(commands, "downloads", "Open the Downloads folder.", targets.DownloadsDirectory);
+        AddFolderCommand(commands, "home", "Open the home folder.", targets.HomeDirectory);
+        return commands;
+    }
+
     private static bool Matches(string query, CommandDefinition definition)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -128,11 +147,9 @@ public sealed class CommandQueryProvider : IQueryProvider
 
     private IReadOnlyList<CommandDefinition> GetCommands()
     {
-        var commands = new List<CommandDefinition>
-        {
-            new("guid", "Generate a dashed GUID.", CreateGuidResult),
-            new("ip", "Show local IPv4 addresses.", CreateIpResult)
-        };
+        var commands = CreateFolderCommands().ToList();
+        commands.Add(new CommandDefinition("guid", "Generate a dashed GUID.", CreateGuidResult));
+        commands.Add(new CommandDefinition("ip", "Show local IPv4 addresses.", CreateIpResult));
 
         if (m_isMacOS)
         {
@@ -150,13 +167,39 @@ public sealed class CommandQueryProvider : IQueryProvider
         return commands;
     }
 
+    private static void AddFolderCommand(List<CommandDefinition> commands, string name, string description, DirectoryInfo directory)
+    {
+        if (commands == null)
+            throw new ArgumentNullException(nameof(commands));
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(name));
+        if (string.IsNullOrWhiteSpace(description))
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(description));
+        if (directory?.Exists != true)
+            return;
+
+        commands.Add(
+            new CommandDefinition(
+                name,
+                description,
+                () =>
+                    new QueryResult(
+                        name,
+                        directory.FullName,
+                        "Folder",
+                        new QueryActionDescriptor(
+                            QueryActionKind.OpenPath,
+                            directory.FullName,
+                            successMessage: $"Opening {name}."))));
+    }
+
     private sealed class CommandDefinition
     {
         public CommandDefinition(string name, string description, Func<QueryResult> createResult)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
-            Description = description ?? throw new ArgumentNullException(nameof(description));
-            CreateResult = createResult ?? throw new ArgumentNullException(nameof(createResult));
+            _ = description ?? throw new ArgumentNullException(nameof(description));
+            CreateQueryResult = createResult ?? throw new ArgumentNullException(nameof(createResult));
         }
 
         public CommandDefinition(string name, string description, string executable, string arguments, string successMessage)
@@ -178,9 +221,7 @@ public sealed class CommandQueryProvider : IQueryProvider
 
         public string Name { get; }
 
-        public string Description { get; }
-
-        public Func<QueryResult> CreateResult { get; }
+        public Func<QueryResult> CreateQueryResult { get; }
     }
 
     private static IReadOnlyList<string> GetLocalIpAddresses()
@@ -198,5 +239,44 @@ public sealed class CommandQueryProvider : IQueryProvider
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(address => address, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static CommonFolderTargets GetCommonFolderTargets()
+    {
+        var homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+        var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+        return new CommonFolderTargets(
+            ToDirectoryInfo(homePath),
+            ToDirectoryInfo(desktopPath),
+            ToDirectoryInfo(documentsPath),
+            ToDirectoryInfo(string.IsNullOrWhiteSpace(homePath) ? null : Path.Combine(homePath, "Downloads")));
+    }
+
+    private static DirectoryInfo ToDirectoryInfo(string path) =>
+        string.IsNullOrWhiteSpace(path) ? null : new DirectoryInfo(path);
+
+    internal sealed class CommonFolderTargets
+    {
+        public CommonFolderTargets(
+            DirectoryInfo homeDirectory,
+            DirectoryInfo desktopDirectory,
+            DirectoryInfo documentsDirectory,
+            DirectoryInfo downloadsDirectory)
+        {
+            HomeDirectory = homeDirectory;
+            DesktopDirectory = desktopDirectory;
+            DocumentsDirectory = documentsDirectory;
+            DownloadsDirectory = downloadsDirectory;
+        }
+
+        public DirectoryInfo HomeDirectory { get; }
+
+        public DirectoryInfo DesktopDirectory { get; }
+
+        public DirectoryInfo DocumentsDirectory { get; }
+
+        public DirectoryInfo DownloadsDirectory { get; }
     }
 }

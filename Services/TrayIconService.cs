@@ -85,5 +85,4 @@ public sealed class TrayIconService : IDisposable
         var loader = AssetLoader.Open(new Uri("avares://G33kSeek/Assets/app.ico"));
         return new WindowIcon(loader);
     }
-
 }

@@ -8,8 +8,8 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
-using System;
-using System.Linq;
+using DTC.Core;
+using DTC.Core.Extensions;
 using G33kSeek.Models;
 using G33kSeek.Providers;
 
@@ -20,22 +20,25 @@ public class CommandQueryProviderTests
     [Test]
     public async Task QueryAsyncReturnsAllCommandsForBlankQuery()
     {
-        var provider = CreateProvider(["192.168.1.20"]);
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
 
         var response = await provider.QueryAsync(new QueryRequest(">", string.Empty, ">"), CancellationToken.None);
 
-        Assert.That(response.Results, Has.Count.EqualTo(5));
-        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "guid", "ip", "logoff", "restart", "shutdown" }));
+        Assert.That(response.Results, Has.Count.EqualTo(9));
+        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "desktop", "documents", "downloads", "guid", "home", "ip", "logoff", "restart", "shutdown" }));
     }
 
     [Test]
     public async Task QueryAsyncFiltersMatchingCommands()
     {
+        using var tempDirectory = new TempDirectory();
         var provider = new CommandQueryProvider(
             isMacOS: false,
             isWindows: true,
             guidFactory: () => Guid.Parse("11111111-2222-3333-4444-555555555555"),
-            ipAddressesAccessor: () => ["192.168.1.20"]);
+            ipAddressesAccessor: () => ["192.168.1.20"],
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory));
 
         var response = await provider.QueryAsync(new QueryRequest(">rest", "rest", ">"), CancellationToken.None);
 
@@ -49,7 +52,8 @@ public class CommandQueryProviderTests
     [Test]
     public async Task QueryAsyncDoesNotMatchDescriptionText()
     {
-        var provider = CreateProvider(["192.168.1.20"]);
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
 
         var response = await provider.QueryAsync(new QueryRequest(">sh", "sh", ">"), CancellationToken.None);
 
@@ -59,7 +63,8 @@ public class CommandQueryProviderTests
     [Test]
     public async Task QueryAsyncReturnsNoMatchesStatusWhenCommandIsUnknown()
     {
-        var provider = CreateProvider(["192.168.1.20"]);
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
 
         var response = await provider.QueryAsync(new QueryRequest(">hibernate", "hibernate", ">"), CancellationToken.None);
 
@@ -70,7 +75,8 @@ public class CommandQueryProviderTests
     [Test]
     public void HelpEntryDescribesCommands()
     {
-        var provider = CreateProvider(["192.168.1.20"]);
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
 
         Assert.That(provider.HelpEntry.Title, Is.EqualTo("Commands"));
         Assert.That(provider.HelpEntry.Example, Is.EqualTo(">shutdown"));
@@ -79,7 +85,8 @@ public class CommandQueryProviderTests
     [Test]
     public async Task QueryAsyncReturnsGeneratedGuidValue()
     {
-        var provider = CreateProvider(["192.168.1.20"]);
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
 
         var response = await provider.QueryAsync(new QueryRequest(">guid", "guid", ">"), CancellationToken.None);
 
@@ -92,7 +99,8 @@ public class CommandQueryProviderTests
     [Test]
     public async Task QueryAsyncReturnsIpValue()
     {
-        var provider = CreateProvider(["192.168.1.20", "10.0.0.5"]);
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20", "10.0.0.5"]);
 
         var response = await provider.QueryAsync(new QueryRequest(">ip", "ip", ">"), CancellationToken.None);
 
@@ -102,12 +110,40 @@ public class CommandQueryProviderTests
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
     }
 
-    private static CommandQueryProvider CreateProvider(IReadOnlyList<string> ipAddresses)
+    [Test]
+    public async Task QueryAsyncReturnsDesktopFolderCommand()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
+
+        var response = await provider.QueryAsync(new QueryRequest(">desk", "desk", ">"), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("desktop"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo(tempDirectory.GetDir("Home/Desktop").FullName));
+    }
+
+    private static CommandQueryProvider CreateProvider(TempDirectory tempDirectory, IReadOnlyList<string> ipAddresses)
     {
         return new CommandQueryProvider(
             isMacOS: true,
             isWindows: false,
             guidFactory: () => Guid.Parse("11111111-2222-3333-4444-555555555555"),
-            ipAddressesAccessor: () => ipAddresses);
+            ipAddressesAccessor: () => ipAddresses,
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory));
+    }
+
+    private static CommandQueryProvider.CommonFolderTargets CreateCommonFolderTargets(TempDirectory tempDirectory)
+    {
+        var homeDirectory = tempDirectory.GetDir("Home");
+        homeDirectory.Create();
+        var desktopDirectory = homeDirectory.GetDir("Desktop");
+        desktopDirectory.Create();
+        var documentsDirectory = homeDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        var downloadsDirectory = homeDirectory.GetDir("Downloads");
+        downloadsDirectory.Create();
+        return new CommandQueryProvider.CommonFolderTargets(homeDirectory, desktopDirectory, documentsDirectory, downloadsDirectory);
     }
 }
