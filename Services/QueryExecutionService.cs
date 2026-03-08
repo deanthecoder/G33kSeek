@@ -23,11 +23,11 @@ namespace G33kSeek.Services;
 /// Executes the default action associated with a query result.
 /// </summary>
 /// <remarks>
-/// This centralises clipboard and open-item behavior so providers only need to describe what Enter should do.
+/// This centralizes clipboard and open-item behavior so providers only need to describe what Enter should do.
 /// </remarks>
 public sealed class QueryExecutionService
 {
-    public async Task<QueryExecutionResult> ExecuteAsync(
+    public static async Task<QueryExecutionResult> ExecuteAsync(
         QueryResult result,
         Window ownerWindow,
         CancellationToken cancellationToken = default)
@@ -76,6 +76,17 @@ public sealed class QueryExecutionService
                 }
 
                 return new QueryExecutionResult(false, "The target URL was invalid.");
+
+            case QueryActionKind.RunProcess:
+                if (string.IsNullOrWhiteSpace(action.Payload))
+                    return new QueryExecutionResult(false, "The target command was invalid.");
+
+                Process.Start(
+                    new ProcessStartInfo(action.Payload, action.Arguments ?? string.Empty)
+                    {
+                        UseShellExecute = false
+                    });
+                return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
 
             default:
                 return new QueryExecutionResult(false, "That action type is not implemented yet.");

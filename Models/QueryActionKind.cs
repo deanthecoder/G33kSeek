@@ -21,5 +21,6 @@ public enum QueryActionKind
     None,
     CopyText,
     OpenPath,
-    OpenUri
+    OpenUri,
+    RunProcess
 }

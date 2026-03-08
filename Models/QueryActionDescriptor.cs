@@ -21,11 +21,13 @@ public sealed class QueryActionDescriptor
     public QueryActionDescriptor(
         QueryActionKind kind,
         string payload = null,
+        string arguments = null,
         string successMessage = null,
         bool shouldHideLauncher = true)
     {
         Kind = kind;
         Payload = payload;
+        Arguments = arguments;
         SuccessMessage = successMessage;
         ShouldHideLauncher = shouldHideLauncher;
     }
@@ -33,6 +35,8 @@ public sealed class QueryActionDescriptor
     public QueryActionKind Kind { get; }
 
     public string Payload { get; }
+
+    public string Arguments { get; }
 
     public string SuccessMessage { get; }
 

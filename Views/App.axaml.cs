@@ -55,12 +55,11 @@ public class App : Application
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path.", "??TODO"));
             providers.Add(new PlaceholderQueryProvider("@", "AI prompt", "AI provider integration comes after the local query engine.", "@summarise this text"));
-            providers.Add(new PlaceholderQueryProvider(">", "Commands", "Command routing will be added after the first providers settle.", ">"));
+            providers.Add(new CommandQueryProvider());
 
             var queryEngine = new QueryEngine(providers);
-            var queryExecutionService = new QueryExecutionService();
             var viewModel = new MainWindowViewModel(queryEngine);
-            var launcherWindow = new MainWindow(viewModel, queryExecutionService);
+            var launcherWindow = new MainWindow(viewModel);
             var launcherWindowService = new LauncherWindowService(desktop, launcherWindow);
             m_trayIconService = new TrayIconService(this, launcherWindowService, () => desktop.Shutdown());
             m_globalHotkeyService = new GlobalHotkeyService(launcherWindowService);

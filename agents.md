@@ -113,6 +113,7 @@ Current UX decisions:
 - Typing after `?` can be used to **filter help topics** for now.
 - `@` remains reserved for **AI prompts**, not general web search.
 - Typing `http://`, `https://`, or `www.` should be recognised as a **direct URL intent** and open in the browser.
+- The first built-in `>` commands are `shutdown`, `restart`, and `logoff`.
 - When the search box is empty, the launcher should hint at examples such as:
   - no prefix for app/file search
   - `=2+2`

@@ -34,6 +34,13 @@ public class HelpQueryProviderTests
         Assert.That(response.Results, Has.Count.EqualTo(4));
         Assert.That(response.StatusText, Does.StartWith("Help: try an app name"));
         Assert.That(response.Results[0].Title, Is.EqualTo("App and file search"));
+        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[]
+        {
+            "App and file search",
+            "Calculator",
+            "Direct URLs",
+            "Help and examples"
+        }));
     }
 
     [Test]

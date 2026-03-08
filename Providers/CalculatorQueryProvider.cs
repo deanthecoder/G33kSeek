@@ -68,7 +68,7 @@ public sealed class CalculatorQueryProvider : IQueryProvider
                             new QueryActionDescriptor(
                                 QueryActionKind.CopyText,
                                 resultText,
-                                $"Copied {resultText} to the clipboard."))
+                                successMessage: $"Copied {resultText} to the clipboard."))
                     ],
                     $"Calculation ready: {resultText}. Press Enter to copy it."));
         }

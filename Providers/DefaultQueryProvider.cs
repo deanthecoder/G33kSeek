@@ -91,7 +91,7 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     new QueryActionDescriptor(
                         QueryActionKind.OpenUri,
                         uri.AbsoluteUri,
-                        $"Opening {uri.Host}."))
+                        successMessage: $"Opening {uri.Host}."))
             ],
             "URL ready. Press Enter to open it.");
         return true;
@@ -172,7 +172,7 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     new QueryActionDescriptor(
                         QueryActionKind.CopyText,
                         value,
-                        $"{label} copied."))
+                        successMessage: $"{label} copied."))
             ],
             statusText);
         return true;
@@ -210,7 +210,7 @@ public sealed class DefaultQueryProvider : IQueryProvider
                             new QueryActionDescriptor(
                                 QueryActionKind.OpenPath,
                                 app.LaunchPath,
-                                $"Launching {app.DisplayName}.")))
+                                successMessage: $"Launching {app.DisplayName}.")))
                 .ToArray(),
             $"Found {applications.Count} application{(applications.Count == 1 ? string.Empty : "s")}.");
     }

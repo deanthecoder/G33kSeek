@@ -81,6 +81,7 @@ public sealed class HelpQueryProvider : IQueryProvider
     {
         var helpEntries = m_helpEntriesAccessor.Invoke() ?? [];
         return helpEntries
+            .OrderBy(entry => entry.Title, StringComparer.OrdinalIgnoreCase)
             .Select(entry => new QueryResult(entry.Title, entry.Description, entry.Example))
             .ToArray();
     }

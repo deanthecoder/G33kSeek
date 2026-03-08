@@ -20,11 +20,13 @@ public class QueryActionDescriptorTests
         var descriptor = new QueryActionDescriptor(
             QueryActionKind.CopyText,
             "42",
+            arguments: "--value",
             "Copied.",
             shouldHideLauncher: false);
 
         Assert.That(descriptor.Kind, Is.EqualTo(QueryActionKind.CopyText));
         Assert.That(descriptor.Payload, Is.EqualTo("42"));
+        Assert.That(descriptor.Arguments, Is.EqualTo("--value"));
         Assert.That(descriptor.SuccessMessage, Is.EqualTo("Copied."));
         Assert.That(descriptor.ShouldHideLauncher, Is.False);
     }

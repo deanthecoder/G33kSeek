@@ -163,6 +163,12 @@ Today the first real no-prefix slice is application search on macOS and Windows:
 - matched by shortcut file name
 - refreshed from a lightweight shortcut scan
 
+Today the first real `>` commands are:
+
+- `>shutdown`
+- `>restart`
+- `>logoff`
+
 ---
 
 ## AI Integration

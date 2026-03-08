@@ -14,25 +14,23 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using G33kSeek.Services;
 using G33kSeek.ViewModels;
+using JetBrains.Annotations;
 
 namespace G33kSeek.Views;
 
 public partial class MainWindow : Window
 {
-    private readonly QueryExecutionService m_queryExecutionService;
     private readonly MainWindowViewModel m_viewModel;
 
+    [UsedImplicitly]
     public MainWindow()
-        : this(new MainWindowViewModel(new QueryEngine([])), new QueryExecutionService())
+        : this(new MainWindowViewModel(new QueryEngine([])))
     {
     }
 
-    public MainWindow(
-        MainWindowViewModel viewModel,
-        QueryExecutionService queryExecutionService)
+    public MainWindow(MainWindowViewModel viewModel)
     {
         m_viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
-        m_queryExecutionService = queryExecutionService ?? throw new ArgumentNullException(nameof(queryExecutionService));
         InitializeComponent();
         DataContext = m_viewModel;
         Opened += OnOpened;
@@ -77,7 +75,7 @@ public partial class MainWindow : Window
             case Key.Enter:
                 if (m_viewModel.SelectedResult != null)
                 {
-                    var executionResult = await m_queryExecutionService.ExecuteAsync(m_viewModel.SelectedResult, this);
+                    var executionResult = await QueryExecutionService.ExecuteAsync(m_viewModel.SelectedResult, this);
                     if (!string.IsNullOrWhiteSpace(executionResult.StatusText))
                         m_viewModel.StatusText = executionResult.StatusText;
 
