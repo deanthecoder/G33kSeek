@@ -9,6 +9,7 @@
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -55,7 +56,73 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     "Type an app or file name, or use =2+2, ? for help, > for commands."));
         }
 
+        if (TryCreateDateTimeResponse(query, out var dateTimeResponse))
+            return Task.FromResult(dateTimeResponse);
+
         return QueryApplicationsAsync(query, cancellationToken);
+    }
+
+    private static bool TryCreateDateTimeResponse(string query, out QueryResponse response)
+    {
+        var normalizedQuery = query.Trim().ToLowerInvariant();
+        var now = DateTimeOffset.Now;
+        string value;
+        string label;
+        string statusText;
+
+        switch (normalizedQuery)
+        {
+            case "now":
+                value = now.ToString("O", CultureInfo.InvariantCulture);
+                label = "Current date and time";
+                statusText = "Current timestamp ready. Press Enter to copy it.";
+                break;
+
+            case "date":
+                value = FormatLongDate(now);
+                label = "Current date";
+                statusText = "Current date ready. Press Enter to copy it.";
+                break;
+
+            case "time":
+                value = now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+                label = "Current time";
+                statusText = "Current time ready. Press Enter to copy it.";
+                break;
+
+            default:
+                response = null;
+                return false;
+        }
+
+        response = new QueryResponse(
+            [
+                new QueryResult(
+                    value,
+                    label,
+                    "Value",
+                    new QueryActionDescriptor(
+                        QueryActionKind.CopyText,
+                        value,
+                        $"{label} copied."))
+            ],
+            statusText);
+        return true;
+    }
+
+    private static string FormatLongDate(DateTimeOffset value)
+    {
+        var day = value.Day;
+        var suffix = day switch
+        {
+            >= 11 and <= 13 => "th",
+            _ when day % 10 == 1 => "st",
+            _ when day % 10 == 2 => "nd",
+            _ when day % 10 == 3 => "rd",
+            _ => "th"
+        };
+
+        return $"{value:dddd} {day}{suffix} {value:MMMM}, {value:yyyy}";
     }
 
     private async Task<QueryResponse> QueryApplicationsAsync(string query, CancellationToken cancellationToken)

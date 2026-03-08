@@ -8,6 +8,7 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using System.Globalization;
 using DTC.Core;
 using DTC.Core.Extensions;
 using G33kSeek.Models;
@@ -56,6 +57,53 @@ public class DefaultQueryProviderTests
         Assert.That(response.Results, Has.Count.EqualTo(1));
         Assert.That(response.Results[0].Title, Is.EqualTo("Safari"));
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsIsoTimestampForNow()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("now", "now", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo("Current date and time"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
+        Assert.That(DateTimeOffset.TryParseExact(
+            response.Results[0].Title,
+            "O",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind,
+            out _), Is.True);
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsDateForDate()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("date", "date", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo("Current date"));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Does.Match(@"^[A-Z][a-z]+ \d{1,2}(st|nd|rd|th) [A-Z][a-z]+, \d{4}$"));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsTimeForTime()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("time", "time", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo("Current time"));
+        Assert.That(DateTime.TryParseExact(
+            response.Results[0].PrimaryAction?.Payload,
+            "HH:mm:ss",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out _), Is.True);
     }
 
     [Test]
