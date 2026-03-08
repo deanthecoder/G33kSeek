@@ -29,6 +29,8 @@ public class MainWindowViewModel : ViewModelBase
     private string m_searchText;
     private string m_statusText = "Press Ctrl+Space to toggle the launcher. Esc dismisses it.";
     private QueryResult m_selectedResult;
+    private int m_visibleResultCount;
+    private bool m_hasResults;
     private CancellationTokenSource m_queryCancellation;
 
     public MainWindowViewModel(QueryEngine queryEngine = null)
@@ -64,6 +66,18 @@ public class MainWindowViewModel : ViewModelBase
         set => SetField(ref m_selectedResult, value);
     }
 
+    public int VisibleResultCount
+    {
+        get => m_visibleResultCount;
+        private set => SetField(ref m_visibleResultCount, value);
+    }
+
+    public bool HasResults
+    {
+        get => m_hasResults;
+        private set => SetField(ref m_hasResults, value);
+    }
+
     private async Task RefreshResultsAsync()
     {
         m_queryCancellation?.Cancel();
@@ -78,6 +92,8 @@ public class MainWindowViewModel : ViewModelBase
             Results.Add(result);
 
         SelectedResult = Results.Count > 0 ? Results[0] : null;
+        VisibleResultCount = Results.Count;
+        HasResults = Results.Count > 0;
         StatusText = string.IsNullOrWhiteSpace(response.StatusText)
             ? "Ready."
             : response.StatusText;

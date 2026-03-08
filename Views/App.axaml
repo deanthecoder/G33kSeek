@@ -5,6 +5,6 @@
              RequestedThemeVariant="Dark">
   <Application.Styles>
     <FluentTheme />
-    <StyleInclude Source="/Views/Styles/SharedGlassTheme.axaml" />
+    <StyleInclude Source="avares://DTC.Core/Themes/SharedGlassTheme.axaml" />
   </Application.Styles>
 </Application>

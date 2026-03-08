@@ -25,6 +25,9 @@ public sealed class DefaultQueryProvider : IQueryProvider
 {
     public string Prefix => string.Empty;
 
+    public QueryProviderHelpEntry HelpEntry =>
+        new("App and file search", "Start typing with no prefix to find apps and files.", "rider");
+
     public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
     {
         if (request == null)
@@ -37,14 +40,7 @@ public sealed class DefaultQueryProvider : IQueryProvider
         {
             return Task.FromResult(
                 new QueryResponse(
-                    [
-                        new QueryResult("App and file search", "Start typing with no prefix to search apps or files.", "default"),
-                        new QueryResult("Calculator mode", "Use = to evaluate calculations like =2+2.", "="),
-                        new QueryResult("Help and examples", "Use ? to see available modes and examples.", "?"),
-                        new QueryResult("Content search", "Use ?? to grep through files.", "??"),
-                        new QueryResult("AI prompt", "Use @ to route text to an AI provider.", "@"),
-                        new QueryResult("Commands", "Use > to execute launcher commands.", ">")
-                    ],
+                    [],
                     "Type an app or file name, or use =2+2, ? for help, > for commands."));
         }
 

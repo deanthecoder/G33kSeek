@@ -25,35 +25,17 @@ namespace G33kSeek.Providers;
 /// </remarks>
 public sealed class HelpQueryProvider : IQueryProvider
 {
-    private static readonly IReadOnlyList<QueryResult> HelpTopics =
-    [
-        new(
-            "App and file search",
-            "Start typing with no prefix to find apps and files.",
-            "rider"),
-        new(
-            "Calculator",
-            "Use = to evaluate maths expressions. Enter copies the result.",
-            "=sin(pi/2)"),
-        new(
-            "Commands",
-            "Use > for launcher commands as they are added.",
-            ">"),
-        new(
-            "AI prompts",
-            "Use @ for AI-focused queries once that provider lands.",
-            "@summarise this text"),
-        new(
-            "Content search",
-            "Use ?? to search inside files when grep support is added.",
-            "??TODO"),
-        new(
-            "Direct URLs",
-            "Planned: typing http://, https://, or www. should open a URL directly.",
-            "https://avaloniaui.net")
-    ];
+    private readonly Func<IReadOnlyList<QueryProviderHelpEntry>> m_helpEntriesAccessor;
+
+    public HelpQueryProvider(Func<IReadOnlyList<QueryProviderHelpEntry>> helpEntriesAccessor)
+    {
+        m_helpEntriesAccessor = helpEntriesAccessor ?? throw new ArgumentNullException(nameof(helpEntriesAccessor));
+    }
 
     public string Prefix => "?";
+
+    public QueryProviderHelpEntry HelpEntry =>
+        new("Help and examples", "Use ? to see available modes and examples.", "?");
 
     public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
     {
@@ -61,17 +43,18 @@ public sealed class HelpQueryProvider : IQueryProvider
             throw new ArgumentNullException(nameof(request));
 
         cancellationToken.ThrowIfCancellationRequested();
+        var helpTopics = GetHelpTopics();
 
         var query = request.ProviderQuery?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(query))
         {
             return Task.FromResult(
                 new QueryResponse(
-                    HelpTopics,
+                    helpTopics,
                     "Help: try an app name, =2+2, > for commands, or keep typing after ? to filter help."));
         }
 
-        var filteredTopics = HelpTopics
+        var filteredTopics = helpTopics
             .Where(result => Matches(result, query))
             .ToArray();
 
@@ -92,6 +75,14 @@ public sealed class HelpQueryProvider : IQueryProvider
             new QueryResponse(
                 filteredTopics,
                 $"Help: showing {filteredTopics.Length} topic{(filteredTopics.Length == 1 ? string.Empty : "s")} for \"{query}\"."));
+    }
+
+    private IReadOnlyList<QueryResult> GetHelpTopics()
+    {
+        var helpEntries = m_helpEntriesAccessor.Invoke() ?? [];
+        return helpEntries
+            .Select(entry => new QueryResult(entry.Title, entry.Description, entry.Example))
+            .ToArray();
     }
 
     private static bool Matches(QueryResult result, string query)

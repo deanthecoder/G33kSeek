@@ -7,11 +7,9 @@
         x:Class="G33kSeek.Views.MainWindow"
         x:DataType="viewModels:MainWindowViewModel"
         Width="760"
-        Height="220"
         MinWidth="640"
-        MinHeight="220"
         MaxWidth="840"
-        MaxHeight="320"
+        MaxHeight="560"
         Background="Transparent"
         BorderBrush="Transparent"
         BorderThickness="0"
@@ -21,6 +19,7 @@
         Icon="/Assets/app.ico"
         Padding="0"
         ShowInTaskbar="False"
+        SizeToContent="Height"
         TransparencyBackgroundFallback="Transparent"
         TransparencyLevelHint="Transparent"
         WindowStartupLocation="Manual"
@@ -33,7 +32,7 @@
 
   <Grid Margin="18">
     <Border Classes="launcherShell">
-      <Grid RowDefinitions="Auto,Auto,*">
+      <Grid RowDefinitions="Auto,Auto,Auto">
         <StackPanel Margin="0,0,0,14"
                     Spacing="6">
           <TextBlock Classes="launcherEyebrow"
@@ -57,11 +56,14 @@
 
         <Border Grid.Row="2"
                 Margin="0,14,0,0"
+                MaxHeight="322"
+                IsVisible="{Binding HasResults}"
                 Classes="resultsPanel">
           <ListBox x:Name="ResultsListBox"
                    Background="Transparent"
                    BorderThickness="0"
                    ItemsSource="{Binding Results}"
+                   ScrollViewer.VerticalScrollBarVisibility="Auto"
                    SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
             <ListBox.ItemTemplate>
               <DataTemplate>

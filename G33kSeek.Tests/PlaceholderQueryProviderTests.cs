@@ -24,6 +24,15 @@ public class PlaceholderQueryProviderTests
     }
 
     [Test]
+    public void HelpEntryDescribesPlaceholderMode()
+    {
+        var provider = new PlaceholderQueryProvider("??", "Content search", "Search will be added later.", "??TODO");
+
+        Assert.That(provider.HelpEntry.Title, Is.EqualTo("Content search"));
+        Assert.That(provider.HelpEntry.Example, Is.EqualTo("??TODO"));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsPlaceholderResult()
     {
         var provider = new PlaceholderQueryProvider("??", "Content search", "Search will be added later.");

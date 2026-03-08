@@ -56,4 +56,8 @@
       <DependentUpon>%(Filename)</DependentUpon>
     </Compile>
   </ItemGroup>
+
+  <ItemGroup>
+    <UpToDateCheckInput Remove="Views\Styles\SharedGlassTheme.axaml" />
+  </ItemGroup>
 </Project>

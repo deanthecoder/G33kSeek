@@ -29,6 +29,7 @@ The UI is built with **Avalonia** and the codebase is written in **C# (.NET)**.
 - Prefer method names without underscores. Async methods should end with `Async` unless a framework contract makes that impossible.
 - Ensure new public classes and public methods have unit tests unless that would be inappropriate or require disproportionate setup for very little gain.
 - Validate public method arguments appropriately, including null checks, range checks, and similar guard clauses where relevant.
+- If a nearby change also includes small incidental cleanups such as removing unused `using` directives or suppressing an existing warning, it is fine to fold those into the same commit rather than splitting them out.
 
 ---
 

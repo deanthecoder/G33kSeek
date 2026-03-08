@@ -12,9 +12,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using System.Collections.Generic;
+using System.Linq;
 using G33kSeek.Providers;
 using G33kSeek.Services;
 using G33kSeek.ViewModels;
+using G33kSeek.Models;
+using QueryProvider = G33kSeek.Providers.IQueryProvider;
 
 namespace G33kSeek.Views;
 
@@ -31,15 +35,28 @@ public class App : Application
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-            var queryEngine = new QueryEngine(
-            [
-                new CalculatorQueryProvider(),
-                new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path."),
-                new HelpQueryProvider(),
-                new PlaceholderQueryProvider("@", "AI prompt", "AI provider integration comes after the local query engine."),
-                new PlaceholderQueryProvider(">", "Commands", "Command routing will be added after the first providers settle."),
-                new DefaultQueryProvider()
-            ]);
+            List<QueryProvider> providers = [];
+            var supplementalHelpEntries = new[]
+            {
+                new QueryProviderHelpEntry(
+                    "Direct URLs",
+                    "Planned: typing http://, https://, or www. should open a URL directly.",
+                    "https://github.com/deanthecoder")
+            };
+            IReadOnlyList<QueryProviderHelpEntry> GetHelpEntries() =>
+                providers
+                    .Select(provider => provider.HelpEntry)
+                    .Concat(supplementalHelpEntries)
+                    .ToArray();
+
+            providers.Add(new DefaultQueryProvider());
+            providers.Add(new CalculatorQueryProvider());
+            providers.Add(new HelpQueryProvider(GetHelpEntries));
+            providers.Add(new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path.", "??TODO"));
+            providers.Add(new PlaceholderQueryProvider("@", "AI prompt", "AI provider integration comes after the local query engine.", "@summarise this text"));
+            providers.Add(new PlaceholderQueryProvider(">", "Commands", "Command routing will be added after the first providers settle.", ">"));
+
+            var queryEngine = new QueryEngine(providers);
             var queryExecutionService = new QueryExecutionService();
             var viewModel = new MainWindowViewModel(queryEngine);
             var launcherWindow = new MainWindow(viewModel, queryExecutionService);

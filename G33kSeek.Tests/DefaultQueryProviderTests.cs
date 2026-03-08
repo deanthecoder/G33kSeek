@@ -22,8 +22,7 @@ public class DefaultQueryProviderTests
     {
         var response = await m_provider.QueryAsync(new QueryRequest(string.Empty, string.Empty, string.Empty), CancellationToken.None);
 
-        Assert.That(response.Results, Has.Count.EqualTo(6));
-        Assert.That(response.Results[2].Title, Is.EqualTo("Help and examples"));
+        Assert.That(response.Results, Is.Empty);
         Assert.That(response.StatusText, Is.EqualTo("Type an app or file name, or use =2+2, ? for help, > for commands."));
     }
 
@@ -35,5 +34,12 @@ public class DefaultQueryProviderTests
         Assert.That(response.Results, Has.Count.EqualTo(1));
         Assert.That(response.Results[0].Title, Is.EqualTo("Application and file search is next."));
         Assert.That(response.Results[0].Subtitle, Does.Contain("readme"));
+    }
+
+    [Test]
+    public void HelpEntryDescribesDefaultSearch()
+    {
+        Assert.That(m_provider.HelpEntry.Title, Is.EqualTo("App and file search"));
+        Assert.That(m_provider.HelpEntry.Example, Is.EqualTo("rider"));
     }
 }

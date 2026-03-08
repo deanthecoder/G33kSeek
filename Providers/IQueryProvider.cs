@@ -24,5 +24,7 @@ public interface IQueryProvider
 {
     string Prefix { get; }
 
+    QueryProviderHelpEntry HelpEntry { get; }
+
     Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken);
 }

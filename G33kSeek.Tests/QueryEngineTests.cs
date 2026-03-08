@@ -68,6 +68,8 @@ public class QueryEngineTests
 
         public string Prefix { get; }
 
+        public QueryProviderHelpEntry HelpEntry => new(m_title, $"{m_title} help", Prefix);
+
         public QueryRequest LastRequest { get; private set; }
 
         public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken)

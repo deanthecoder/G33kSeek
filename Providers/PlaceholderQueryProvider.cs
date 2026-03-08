@@ -8,6 +8,7 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using G33kSeek.Models;
@@ -24,20 +25,27 @@ public sealed class PlaceholderQueryProvider : IQueryProvider
 {
     private readonly string m_title;
     private readonly string m_description;
+    private readonly string m_example;
 
-    public PlaceholderQueryProvider(string prefix, string title, string description)
+    public PlaceholderQueryProvider(string prefix, string title, string description, string example = null)
     {
-        Prefix = prefix ?? string.Empty;
-        m_title = title ?? string.Empty;
-        m_description = description ?? string.Empty;
+        Prefix = prefix ?? throw new ArgumentNullException(nameof(prefix));
+        m_title = title ?? throw new ArgumentNullException(nameof(title));
+        m_description = description ?? throw new ArgumentNullException(nameof(description));
+        m_example = string.IsNullOrWhiteSpace(example) ? prefix : example;
     }
 
     public string Prefix { get; }
 
+    public QueryProviderHelpEntry HelpEntry => new(m_title, m_description, m_example);
+
     public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
     {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+
         cancellationToken.ThrowIfCancellationRequested();
-        var query = request?.ProviderQuery?.Trim() ?? string.Empty;
+        var query = request.ProviderQuery?.Trim() ?? string.Empty;
         var subtitle = string.IsNullOrWhiteSpace(query)
             ? m_description
             : $"{m_description} Query: {query}";
