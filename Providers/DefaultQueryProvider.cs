@@ -27,12 +27,16 @@ namespace G33kSeek.Providers;
 public sealed class DefaultQueryProvider : IQueryProvider
 {
     private readonly ApplicationSearchService m_applicationSearchService;
+    private readonly UnitConversionService m_unitConversionService;
 
-    public DefaultQueryProvider() : this(new ApplicationSearchService()) { }
+    public DefaultQueryProvider() : this(new ApplicationSearchService(), new UnitConversionService()) { }
 
-    internal DefaultQueryProvider(ApplicationSearchService applicationSearchService)
+    internal DefaultQueryProvider(
+        ApplicationSearchService applicationSearchService,
+        UnitConversionService unitConversionService = null)
     {
         m_applicationSearchService = applicationSearchService ?? throw new ArgumentNullException(nameof(applicationSearchService));
+        m_unitConversionService = unitConversionService ?? new UnitConversionService();
     }
 
     public string Prefix => string.Empty;
@@ -61,6 +65,9 @@ public sealed class DefaultQueryProvider : IQueryProvider
 
         if (TryCreateDateTimeResponse(query, out var dateTimeResponse))
             return Task.FromResult(dateTimeResponse);
+
+        if (TryCreateUnitConversionResponse(query, out var unitConversionResponse))
+            return Task.FromResult(unitConversionResponse);
 
         return QueryApplicationsAsync(query, cancellationToken);
     }
@@ -191,6 +198,29 @@ public sealed class DefaultQueryProvider : IQueryProvider
         };
 
         return $"{value:dddd} {day}{suffix} {value:MMMM}, {value:yyyy}";
+    }
+
+    private bool TryCreateUnitConversionResponse(string query, out QueryResponse response)
+    {
+        if (!m_unitConversionService.TryConvert(query, out var convertedValue, out var description))
+        {
+            response = null;
+            return false;
+        }
+
+        response = new QueryResponse(
+            [
+                new QueryResult(
+                    convertedValue,
+                    description,
+                    "Value",
+                    new QueryActionDescriptor(
+                        QueryActionKind.CopyText,
+                        convertedValue,
+                        successMessage: "Conversion copied."))
+            ],
+            "Conversion ready. Press Enter to copy it.");
+        return true;
     }
 
     private async Task<QueryResponse> QueryApplicationsAsync(string query, CancellationToken cancellationToken)

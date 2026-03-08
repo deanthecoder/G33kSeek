@@ -156,6 +156,54 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncReturnsDataSizeConversion()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("10mb in bytes", "10mb in bytes", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("10485760 bytes"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsHexConversion()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("255 in hex", "255 in hex", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("0xFF"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsTemperatureConversion()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("100c in f", "100c in f", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("212 F"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsLengthConversion()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("180cm in ft", "180cm in ft", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("5 ft 10.8661 in"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsNoMatchesStatusWhenNothingMatches()
     {
         var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());

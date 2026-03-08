@@ -44,6 +44,10 @@ public class App : Application
                     "Typing http://, https://, or www. opens a URL directly.",
                     "https://github.com/deanthecoder"),
                 new QueryProviderHelpEntry(
+                    "Unit conversion",
+                    "Type conversions like 10mb in bytes or 255 in hex with no prefix.",
+                    "10mb in bytes"),
+                new QueryProviderHelpEntry(
                     "Web search",
                     "Use ?\"search text\" to run a Google web search.",
                     "?\"avalonia docs\"")

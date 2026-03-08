@@ -115,6 +115,7 @@ Current UX decisions:
 - `@` remains reserved for **AI prompts**, not general web search.
 - Typing `http://`, `https://`, or `www.` should be recognised as a **direct URL intent** and open in the browser.
 - The first built-in `>` commands are `desktop`, `documents`, `downloads`, `guid`, `home`, `ip`, `shutdown`, `restart`, and `logoff`.
+- No-prefix utility queries can also return quick conversions such as `10mb in bytes`, `255 in hex`, or `0xff in decimal`.
 - When the search box is empty, the launcher should hint at examples such as:
   - no prefix for app/file search
   - `=2+2`
@@ -352,6 +353,7 @@ These are lightweight habits that help keep ReviewG33k findings low without over
 G33kSeek is expected to evolve. Future capabilities may include:
 
 - Clipboard history
+- Clipboard text helpers
 - Emoji picker
 - Unit conversions
 - Colour utilities

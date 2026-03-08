@@ -42,6 +42,12 @@ The initial desktop shell now exists and includes:
 - a centered Spotlight-like text entry surface
 - a system tray icon with show / hide / exit actions
 - a first-cut global hotkey using **SharpHook** (`Ctrl+Space`)
+- no-prefix app search on macOS and Windows
+- direct URL opening for `http://`, `https://`, `www.`, and bare domains
+- quick no-prefix utility values like `now`, `date`, and `time`
+- no-prefix unit conversions for data sizes, temperature, weight, length, and hex/decimal
+- `?` help, filtered help, and quoted web search via Google
+- `>` commands for common folders, GUID/IP utilities, and basic system actions
 
 This is intentionally just the starting point before real providers and indexing are connected.
 
@@ -68,6 +74,11 @@ The first characters of the query determine the **mode**.
 rider
 https://avaloniaui.net
 =4*8
+10mb in bytes
+100c in f
+68kg in stone
+180cm in ft
+255 in hex
 ?
 ?"avalonia docs"
 ??class Program
@@ -163,6 +174,15 @@ Today the first real no-prefix slice is application search on macOS and Windows:
 - cached from the Windows Start Menu `Programs` roots
 - matched by shortcut file name
 - refreshed from a lightweight shortcut scan
+
+Current no-prefix utility queries also include:
+
+- `now`, `date`, `time`
+- data-size conversion such as `10mb in bytes`
+- hex/decimal conversion such as `255 in hex` or `0xff in decimal`
+- temperature conversion such as `100c in f`
+- weight conversion such as `68kg in stone`
+- length conversion such as `180cm in ft`
 
 Today the first real `>` commands are:
 
