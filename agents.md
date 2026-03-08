@@ -112,7 +112,7 @@ Current UX decisions:
 - A bare `?` should open **in-app help** rather than web search.
 - Typing after `?` can be used to **filter help topics** for now.
 - `@` remains reserved for **AI prompts**, not general web search.
-- Typing `http://`, `https://`, or `www.` should eventually be recognised as a **direct URL intent** and open in the browser.
+- Typing `http://`, `https://`, or `www.` should be recognised as a **direct URL intent** and open in the browser.
 - When the search box is empty, the launcher should hint at examples such as:
   - no prefix for app/file search
   - `=2+2`

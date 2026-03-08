@@ -41,7 +41,7 @@ public class App : Application
             {
                 new QueryProviderHelpEntry(
                     "Direct URLs",
-                    "Planned: typing http://, https://, or www. should open a URL directly.",
+                    "Typing http://, https://, or www. opens a URL directly.",
                     "https://github.com/deanthecoder")
             };
             IReadOnlyList<QueryProviderHelpEntry> GetHelpEntries() =>

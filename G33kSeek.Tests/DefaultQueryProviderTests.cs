@@ -60,6 +60,55 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncReturnsOpenUrlResultForHttpsAddress()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("https://avaloniaui.net", "https://avaloniaui.net", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo("Open URL in browser"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenUri));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("https://avaloniaui.net/"));
+    }
+
+    [Test]
+    public async Task QueryAsyncNormalizesWwwAddressToHttps()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("www.openai.com", "www.openai.com", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenUri));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("https://www.openai.com/"));
+    }
+
+    [Test]
+    public async Task QueryAsyncNormalizesBareDotComAddressToHttps()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("openai.com", "openai.com", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenUri));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("https://openai.com/"));
+    }
+
+    [Test]
+    public async Task QueryAsyncNormalizesBareCoUkAddressWithPathToHttps()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("bbc.co.uk/news", "bbc.co.uk/news", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenUri));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("https://bbc.co.uk/news"));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsIsoTimestampForNow()
     {
         var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());

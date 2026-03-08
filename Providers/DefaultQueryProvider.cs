@@ -56,10 +56,78 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     "Type an app or file name, or use =2+2, ? for help, > for commands."));
         }
 
+        if (TryCreateUrlResponse(query, out var urlResponse))
+            return Task.FromResult(urlResponse);
+
         if (TryCreateDateTimeResponse(query, out var dateTimeResponse))
             return Task.FromResult(dateTimeResponse);
 
         return QueryApplicationsAsync(query, cancellationToken);
+    }
+
+    private static bool TryCreateUrlResponse(string query, out QueryResponse response)
+    {
+        var trimmedQuery = query.Trim();
+        var candidate = BuildUrlCandidate(trimmedQuery);
+
+        if (candidate == null)
+        {
+            response = null;
+            return false;
+        }
+
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+        {
+            response = null;
+            return false;
+        }
+
+        response = new QueryResponse(
+            [
+                new QueryResult(
+                    uri.AbsoluteUri,
+                    "Open URL in browser",
+                    "URL",
+                    new QueryActionDescriptor(
+                        QueryActionKind.OpenUri,
+                        uri.AbsoluteUri,
+                        $"Opening {uri.Host}."))
+            ],
+            "URL ready. Press Enter to open it.");
+        return true;
+    }
+
+    private static string BuildUrlCandidate(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query) ||
+            query.Contains(' ') ||
+            query.Contains('\\'))
+        {
+            return null;
+        }
+
+        if (query.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+            query.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            return query;
+        }
+
+        if (query.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
+            return $"https://{query}";
+
+        var firstSlash = query.IndexOf('/');
+        var firstQuestionMark = query.IndexOf('?');
+        var firstHash = query.IndexOf('#');
+        var hostLength = new[] { firstSlash, firstQuestionMark, firstHash }
+            .Where(index => index >= 0)
+            .DefaultIfEmpty(query.Length)
+            .Min();
+        var host = query[..hostLength];
+
+        if (!host.Contains('.') || Uri.CheckHostName(host) != UriHostNameType.Dns)
+            return null;
+
+        return $"https://{query}";
     }
 
     private static bool TryCreateDateTimeResponse(string query, out QueryResponse response)

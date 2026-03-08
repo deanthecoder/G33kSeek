@@ -53,7 +53,7 @@ The first characters of the query determine the **mode**.
 
 | Prefix | Mode | Example | Behaviour |
 |------|------|------|------|
-| *(none)* | App / File search | `rider` | Search installed apps and indexed files |
+| *(none)* | App / File search | `rider` | Search installed apps and indexed files, or open direct URLs |
 | `=` | Calculator | `=2+2` | Evaluate math expressions |
 | `?` | Help / examples | `?` | Show available modes and examples |
 | `??` | File content search | `??TODO` | Search file contents |
@@ -66,6 +66,7 @@ The first characters of the query determine the **mode**.
 
 ```
 rider
+https://avaloniaui.net
 =4*8
 ?
 ??class Program
