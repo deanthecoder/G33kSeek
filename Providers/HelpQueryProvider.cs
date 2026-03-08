@@ -35,7 +35,7 @@ public sealed class HelpQueryProvider : IQueryProvider
     public string Prefix => "?";
 
     public QueryProviderHelpEntry HelpEntry =>
-        new("Help and examples", "Use ? to see available modes and examples.", "?");
+        new("Help and examples", "Use ? for help, or ?\"search text\" to search the web.", "?");
 
     public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
     {
@@ -51,8 +51,11 @@ public sealed class HelpQueryProvider : IQueryProvider
             return Task.FromResult(
                 new QueryResponse(
                     helpTopics,
-                    "Help: try an app name, =2+2, > for commands, or keep typing after ? to filter help."));
+                    "Help: try an app name, =2+2, > for commands, keep typing after ? to filter help, or use ?\"search text\" for web search."));
         }
+
+        if (TryCreateWebSearchResponse(query, out var webSearchResponse))
+            return Task.FromResult(webSearchResponse);
 
         var filteredTopics = helpTopics
             .Where(result => Matches(result, query))
@@ -72,9 +75,40 @@ public sealed class HelpQueryProvider : IQueryProvider
         }
 
         return Task.FromResult(
-            new QueryResponse(
-                filteredTopics,
+                new QueryResponse(
+                    filteredTopics,
                 $"Help: showing {filteredTopics.Length} topic{(filteredTopics.Length == 1 ? string.Empty : "s")} for \"{query}\"."));
+    }
+
+    private static bool TryCreateWebSearchResponse(string query, out QueryResponse response)
+    {
+        if (query.Length < 2 || query[0] != '"' || query[^1] != '"')
+        {
+            response = null;
+            return false;
+        }
+
+        var searchText = query[1..^1].Trim();
+        if (string.IsNullOrWhiteSpace(searchText))
+        {
+            response = null;
+            return false;
+        }
+
+        var searchUri = $"https://www.google.com/search?q={Uri.EscapeDataString(searchText)}";
+        response = new QueryResponse(
+            [
+                new QueryResult(
+                    searchText,
+                    "Search the web with Google",
+                    "Web",
+                    new QueryActionDescriptor(
+                        QueryActionKind.OpenUri,
+                        searchUri,
+                        successMessage: "Opening Google search."))
+            ],
+            "Web search ready. Press Enter to open it.");
+        return true;
     }
 
     private IReadOnlyList<QueryResult> GetHelpTopics()

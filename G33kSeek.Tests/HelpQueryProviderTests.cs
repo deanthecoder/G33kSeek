@@ -20,7 +20,8 @@ public class HelpQueryProviderTests
         new("App and file search", "Start typing with no prefix to find apps and files.", "rider"),
         new("Calculator", "Use = to evaluate maths expressions. Enter copies the result.", "=sin(pi/2)"),
         new("Help and examples", "Use ? to see available modes and examples.", "?"),
-        new("Direct URLs", "Typing a URL should open it directly.", "https://avaloniaui.net")
+        new("Direct URLs", "Typing a URL should open it directly.", "https://avaloniaui.net"),
+        new("Web search", "Use ?\"search text\" to run a Google web search.", "?\"avalonia docs\"")
     ];
 
     private HelpQueryProvider CreateProvider() => new(() => m_helpEntries);
@@ -31,7 +32,7 @@ public class HelpQueryProviderTests
         var provider = CreateProvider();
         var response = await provider.QueryAsync(new QueryRequest("?", string.Empty, "?"), CancellationToken.None);
 
-        Assert.That(response.Results, Has.Count.EqualTo(4));
+        Assert.That(response.Results, Has.Count.EqualTo(5));
         Assert.That(response.StatusText, Does.StartWith("Help: try an app name"));
         Assert.That(response.Results[0].Title, Is.EqualTo("App and file search"));
         Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[]
@@ -39,8 +40,22 @@ public class HelpQueryProviderTests
             "App and file search",
             "Calculator",
             "Direct URLs",
-            "Help and examples"
+            "Help and examples",
+            "Web search"
         }));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsGoogleSearchResultForQuotedQuery()
+    {
+        var provider = CreateProvider();
+        var response = await provider.QueryAsync(new QueryRequest("?\"avalonia docs\"", "\"avalonia docs\"", "?"), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("avalonia docs"));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo("Search the web with Google"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenUri));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("https://www.google.com/search?q=avalonia%20docs"));
     }
 
     [Test]

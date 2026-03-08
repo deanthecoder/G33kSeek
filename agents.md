@@ -100,7 +100,7 @@ The first character(s) of the query determines the provider.
 |------|------|------|
 | *(none)* | File/App search | `rider` |
 | `=` | Calculator | `=2+2` |
-| `?` | Help / examples | `?` or `?calc` |
+| `?` | Help / examples / web search | `?`, `?calc`, or `?"avalonia docs"` |
 | `??` | File content search | `??TODO` |
 | `@` | AI prompt | `@summarise this text` |
 | `>` | Commands | `>shutdown` |
@@ -111,6 +111,7 @@ Current UX decisions:
 
 - A bare `?` should open **in-app help** rather than web search.
 - Typing after `?` can be used to **filter help topics** for now.
+- If the text after `?` is wrapped in quotes, it should be treated as an explicit **web search**.
 - `@` remains reserved for **AI prompts**, not general web search.
 - Typing `http://`, `https://`, or `www.` should be recognised as a **direct URL intent** and open in the browser.
 - The first built-in `>` commands are `guid`, `ip`, `shutdown`, `restart`, and `logoff`.

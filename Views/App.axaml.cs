@@ -42,7 +42,11 @@ public class App : Application
                 new QueryProviderHelpEntry(
                     "Direct URLs",
                     "Typing http://, https://, or www. opens a URL directly.",
-                    "https://github.com/deanthecoder")
+                    "https://github.com/deanthecoder"),
+                new QueryProviderHelpEntry(
+                    "Web search",
+                    "Use ?\"search text\" to run a Google web search.",
+                    "?\"avalonia docs\"")
             };
             IReadOnlyList<QueryProviderHelpEntry> GetHelpEntries() =>
                 providers

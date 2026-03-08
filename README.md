@@ -55,7 +55,7 @@ The first characters of the query determine the **mode**.
 |------|------|------|------|
 | *(none)* | App / File search | `rider` | Search installed apps and indexed files, or open direct URLs |
 | `=` | Calculator | `=2+2` | Evaluate math expressions |
-| `?` | Help / examples | `?` | Show available modes and examples |
+| `?` | Help / examples / web search | `?` | Show help, filter help topics, or use quoted text for web search |
 | `??` | File content search | `??TODO` | Search file contents |
 | `@` | AI prompt | `@summarise this text` | Send prompt to an AI provider |
 | `>` | Commands | `>shutdown` | Execute built‑in commands |
@@ -69,6 +69,7 @@ rider
 https://avaloniaui.net
 =4*8
 ?
+?"avalonia docs"
 ??class Program
 @explain this regex
 >restart explorer
