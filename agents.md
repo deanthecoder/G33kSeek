@@ -116,6 +116,8 @@ Current UX decisions:
   - `=2+2`
   - `?` for help
   - `>` for commands
+- For macOS application search, a fast top-level scan of `/Applications` and `~/Applications` is preferred.
+- macOS app results can use the `.app` bundle name directly as the display name; no deeper bundle inspection is required for the first slice.
 
 ---
 

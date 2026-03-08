@@ -55,7 +55,7 @@ The first characters of the query determine the **mode**.
 |------|------|------|------|
 | *(none)* | App / File search | `rider` | Search installed apps and indexed files |
 | `=` | Calculator | `=2+2` | Evaluate math expressions |
-| `?` | Web search | `?avalonia docs` | Open browser search |
+| `?` | Help / examples | `?` | Show available modes and examples |
 | `??` | File content search | `??TODO` | Search file contents |
 | `@` | AI prompt | `@summarise this text` | Send prompt to an AI provider |
 | `>` | Commands | `>shutdown` | Execute built‑in commands |
@@ -66,9 +66,8 @@ The first characters of the query determine the **mode**.
 
 ```
 rider
-readme.md
 =4*8
-?avalonia ui docs
+?
 ??class Program
 @explain this regex
 >restart explorer
@@ -153,6 +152,12 @@ Possible strategies:
 - OS integration where possible
 
 Initial implementation can be simple and evolve later.
+
+Today the first real no-prefix slice is macOS application search:
+
+- cached from `/Applications` and `~/Applications`
+- matched by `.app` bundle name
+- refreshed from a fast top-level scan
 
 ---
 

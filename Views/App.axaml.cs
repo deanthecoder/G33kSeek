@@ -34,6 +34,7 @@ public class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var applicationSearchService = new ApplicationSearchService();
 
             List<QueryProvider> providers = [];
             var supplementalHelpEntries = new[]
@@ -49,7 +50,7 @@ public class App : Application
                     .Concat(supplementalHelpEntries)
                     .ToArray();
 
-            providers.Add(new DefaultQueryProvider());
+            providers.Add(new DefaultQueryProvider(applicationSearchService));
             providers.Add(new CalculatorQueryProvider());
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path.", "??TODO"));
@@ -68,6 +69,7 @@ public class App : Application
 
             m_trayIconService.Initialize();
             m_globalHotkeyService.Start();
+            _ = applicationSearchService.WarmAsync();
 
 #if DEBUG
             launcherWindowService.Show();

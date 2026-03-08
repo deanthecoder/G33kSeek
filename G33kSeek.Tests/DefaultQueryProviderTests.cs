@@ -8,18 +8,20 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using DTC.Core;
+using DTC.Core.Extensions;
 using G33kSeek.Models;
 using G33kSeek.Providers;
+using G33kSeek.Services;
 
 namespace G33kSeek.Tests;
 
 public class DefaultQueryProviderTests
 {
-    private readonly DefaultQueryProvider m_provider = new();
-
     [Test]
     public async Task QueryAsyncReturnsModeSummaryForBlankQuery()
     {
+        var m_provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
         var response = await m_provider.QueryAsync(new QueryRequest(string.Empty, string.Empty, string.Empty), CancellationToken.None);
 
         Assert.That(response.Results, Is.Empty);
@@ -27,19 +29,53 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
-    public async Task QueryAsyncReturnsPlaceholderResultForTypedDefaultQuery()
+    public async Task QueryAsyncReturnsMatchingApplications()
     {
-        var response = await m_provider.QueryAsync(new QueryRequest("readme", "readme", string.Empty), CancellationToken.None);
+        using var tempDirectory = new TempDirectory();
+        var applicationRoot = tempDirectory.GetDir("Applications");
+        applicationRoot.Create();
+        var safariBundle = applicationRoot.CreateSubdirectory("Safari.app");
+        var applicationSearchService = new ApplicationSearchService(
+            [applicationRoot],
+            [
+                new IndexedApplication
+                {
+                    DisplayName = "Safari",
+                    SearchName = "safari",
+                    BundleDirectory = safariBundle
+                }
+            ],
+            isMacOS: true,
+            DateTime.UtcNow);
+        var m_provider = new DefaultQueryProvider(applicationSearchService);
+
+        var response = await m_provider.QueryAsync(new QueryRequest("saf", "saf", string.Empty), CancellationToken.None);
 
         Assert.That(response.Results, Has.Count.EqualTo(1));
-        Assert.That(response.Results[0].Title, Is.EqualTo("Application and file search is next."));
-        Assert.That(response.Results[0].Subtitle, Does.Contain("readme"));
+        Assert.That(response.Results[0].Title, Is.EqualTo("Safari"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsNoMatchesStatusWhenNothingMatches()
+    {
+        var m_provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+        var response = await m_provider.QueryAsync(new QueryRequest("nomatch", "nomatch", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Is.Empty);
+        Assert.That(response.StatusText, Is.EqualTo("No applications matched \"nomatch\"."));
     }
 
     [Test]
     public void HelpEntryDescribesDefaultSearch()
     {
+        var m_provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
         Assert.That(m_provider.HelpEntry.Title, Is.EqualTo("App and file search"));
         Assert.That(m_provider.HelpEntry.Example, Is.EqualTo("rider"));
+    }
+
+    private static ApplicationSearchService CreateEmptyApplicationSearchService()
+    {
+        return new ApplicationSearchService([], [], isMacOS: true);
     }
 }

@@ -9,9 +9,11 @@
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using G33kSeek.Models;
+using G33kSeek.Services;
 
 namespace G33kSeek.Providers;
 
@@ -23,6 +25,15 @@ namespace G33kSeek.Providers;
 /// </remarks>
 public sealed class DefaultQueryProvider : IQueryProvider
 {
+    private readonly ApplicationSearchService m_applicationSearchService;
+
+    public DefaultQueryProvider() : this(new ApplicationSearchService()) { }
+
+    internal DefaultQueryProvider(ApplicationSearchService applicationSearchService)
+    {
+        m_applicationSearchService = applicationSearchService ?? throw new ArgumentNullException(nameof(applicationSearchService));
+    }
+
     public string Prefix => string.Empty;
 
     public QueryProviderHelpEntry HelpEntry =>
@@ -44,14 +55,28 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     "Type an app or file name, or use =2+2, ? for help, > for commands."));
         }
 
-        return Task.FromResult(
-            new QueryResponse(
-                [
-                    new QueryResult(
-                        "Application and file search is next.",
-                        $"No-prefix query received: {query}",
-                        "Soon")
-                ],
-                "The engine is live. Default search provider implementation comes next."));
+        return QueryApplicationsAsync(query, cancellationToken);
+    }
+
+    private async Task<QueryResponse> QueryApplicationsAsync(string query, CancellationToken cancellationToken)
+    {
+        var applications = await m_applicationSearchService.SearchAsync(query, cancellationToken);
+        if (applications.Count == 0)
+            return new QueryResponse([], $"No applications matched \"{query}\".");
+
+        return new QueryResponse(
+            applications
+                .Select(
+                    app =>
+                        new QueryResult(
+                            app.DisplayName,
+                            app.BundleDirectory.FullName,
+                            "App",
+                            new QueryActionDescriptor(
+                                QueryActionKind.OpenPath,
+                                app.BundleDirectory.FullName,
+                                $"Launching {app.DisplayName}.")))
+                .ToArray(),
+            $"Found {applications.Count} application{(applications.Count == 1 ? string.Empty : "s")}.");
     }
 }
