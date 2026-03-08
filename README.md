@@ -153,11 +153,14 @@ Possible strategies:
 
 Initial implementation can be simple and evolve later.
 
-Today the first real no-prefix slice is macOS application search:
+Today the first real no-prefix slice is application search on macOS and Windows:
 
 - cached from `/Applications` and `~/Applications`
 - matched by `.app` bundle name
 - refreshed from a fast top-level scan
+- cached from the Windows Start Menu `Programs` roots
+- matched by shortcut file name
+- refreshed from a lightweight shortcut scan
 
 ---
 

@@ -27,9 +27,11 @@ The UI is built with **Avalonia** and the codebase is written in **C# (.NET)**.
 - Git commit messages must start with `Feature:`, `Fix:`, or `Other:`, use sentence case, and end with a full stop.
 - Persist launcher settings via `DTC.Core.Settings.UserSettingsBase` rather than inventing a separate settings persistence layer.
 - Prefer method names without underscores. Async methods should end with `Async` unless a framework contract makes that impossible.
+- Reserve the `m_` prefix for fields only. Local variables and parameters should use normal local-style names.
 - Ensure new public classes and public methods have unit tests unless that would be inappropriate or require disproportionate setup for very little gain.
 - Validate public method arguments appropriately, including null checks, range checks, and similar guard clauses where relevant.
 - If a nearby change also includes small incidental cleanups such as removing unused `using` directives or suppressing an existing warning, it is fine to fold those into the same commit rather than splitting them out.
+- When working with `FileInfo` or `DirectoryInfo`, prefer their `DTC.Core` extension helpers such as `file.WriteAllText(...)` over dropping back to static `File`/`Directory` calls.
 
 ---
 
@@ -118,6 +120,8 @@ Current UX decisions:
   - `>` for commands
 - For macOS application search, a fast top-level scan of `/Applications` and `~/Applications` is preferred.
 - macOS app results can use the `.app` bundle name directly as the display name; no deeper bundle inspection is required for the first slice.
+- For Windows application search, prefer the Start Menu `Programs` roots rather than scanning install directories.
+- Windows app results can use shortcut file names directly for the first slice, and launching the shortcut path is acceptable.
 
 ---
 

@@ -21,8 +21,8 @@ public class DefaultQueryProviderTests
     [Test]
     public async Task QueryAsyncReturnsModeSummaryForBlankQuery()
     {
-        var m_provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
-        var response = await m_provider.QueryAsync(new QueryRequest(string.Empty, string.Empty, string.Empty), CancellationToken.None);
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+        var response = await provider.QueryAsync(new QueryRequest(string.Empty, string.Empty, string.Empty), CancellationToken.None);
 
         Assert.That(response.Results, Is.Empty);
         Assert.That(response.StatusText, Is.EqualTo("Type an app or file name, or use =2+2, ? for help, > for commands."));
@@ -37,6 +37,7 @@ public class DefaultQueryProviderTests
         var safariBundle = applicationRoot.CreateSubdirectory("Safari.app");
         var applicationSearchService = new ApplicationSearchService(
             [applicationRoot],
+            [],
             [
                 new IndexedApplication
                 {
@@ -46,10 +47,11 @@ public class DefaultQueryProviderTests
                 }
             ],
             isMacOS: true,
+            isWindows: false,
             DateTime.UtcNow);
-        var m_provider = new DefaultQueryProvider(applicationSearchService);
+        var provider = new DefaultQueryProvider(applicationSearchService);
 
-        var response = await m_provider.QueryAsync(new QueryRequest("saf", "saf", string.Empty), CancellationToken.None);
+        var response = await provider.QueryAsync(new QueryRequest("saf", "saf", string.Empty), CancellationToken.None);
 
         Assert.That(response.Results, Has.Count.EqualTo(1));
         Assert.That(response.Results[0].Title, Is.EqualTo("Safari"));
@@ -59,8 +61,8 @@ public class DefaultQueryProviderTests
     [Test]
     public async Task QueryAsyncReturnsNoMatchesStatusWhenNothingMatches()
     {
-        var m_provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
-        var response = await m_provider.QueryAsync(new QueryRequest("nomatch", "nomatch", string.Empty), CancellationToken.None);
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+        var response = await provider.QueryAsync(new QueryRequest("nomatch", "nomatch", string.Empty), CancellationToken.None);
 
         Assert.That(response.Results, Is.Empty);
         Assert.That(response.StatusText, Is.EqualTo("No applications matched \"nomatch\"."));
@@ -69,13 +71,13 @@ public class DefaultQueryProviderTests
     [Test]
     public void HelpEntryDescribesDefaultSearch()
     {
-        var m_provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
-        Assert.That(m_provider.HelpEntry.Title, Is.EqualTo("App and file search"));
-        Assert.That(m_provider.HelpEntry.Example, Is.EqualTo("rider"));
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());
+        Assert.That(provider.HelpEntry.Title, Is.EqualTo("App and file search"));
+        Assert.That(provider.HelpEntry.Example, Is.EqualTo("rider"));
     }
 
     private static ApplicationSearchService CreateEmptyApplicationSearchService()
     {
-        return new ApplicationSearchService([], [], isMacOS: true);
+        return new ApplicationSearchService([], [], [], isMacOS: true, isWindows: false);
     }
 }

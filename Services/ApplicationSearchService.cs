@@ -23,7 +23,7 @@ namespace G33kSeek.Services;
 /// Provides cached application discovery and lookup for no-prefix launcher queries.
 /// </summary>
 /// <remarks>
-/// This keeps application search fast by scanning macOS application roots in the background and serving matches from cached entries.
+/// This keeps application search fast by scanning macOS and Windows application sources in the background and serving matches from cached entries.
 /// </remarks>
 internal sealed class ApplicationSearchService
 {
@@ -32,38 +32,48 @@ internal sealed class ApplicationSearchService
     private readonly SemaphoreSlim m_refreshLock = new(1, 1);
     private readonly ApplicationSearchSettings m_settings;
     private readonly bool m_isMacOS;
+    private readonly bool m_isWindows;
     private readonly IReadOnlyList<DirectoryInfo> m_macApplicationRoots;
+    private readonly IReadOnlyList<DirectoryInfo> m_windowsApplicationRoots;
     private List<IndexedApplication> m_cachedApplications;
     private DateTime m_lastRefreshUtc;
 
     public ApplicationSearchService()
-        : this(new ApplicationSearchSettings(), null, OperatingSystem.IsMacOS())
+        : this(new ApplicationSearchSettings(), null, null, OperatingSystem.IsMacOS(), OperatingSystem.IsWindows())
     {
     }
 
     private ApplicationSearchService(
         ApplicationSearchSettings settings,
         IEnumerable<DirectoryInfo> macApplicationRoots,
-        bool isMacOS)
+        IEnumerable<DirectoryInfo> windowsApplicationRoots,
+        bool isMacOS,
+        bool isWindows)
     {
         m_settings = settings;
         m_isMacOS = isMacOS;
+        m_isWindows = isWindows;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ??
-                                settings?.MacApplicationRoots?.ToArray() ??
-                                [];
+                                GetConfiguredOrDefaultMacRoots(settings);
+        m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ??
+                                    GetConfiguredOrDefaultWindowsRoots(settings);
         m_cachedApplications = settings?.CachedApplications?.ToList() ?? [];
         m_lastRefreshUtc = settings?.LastApplicationRefreshUtc ?? DateTime.MinValue;
     }
 
     internal ApplicationSearchService(
         IEnumerable<DirectoryInfo> macApplicationRoots,
+        IEnumerable<DirectoryInfo> windowsApplicationRoots,
         IEnumerable<IndexedApplication> cachedApplications,
         bool isMacOS,
+        bool isWindows,
         DateTime? lastRefreshUtc = null)
     {
         m_settings = null;
         m_isMacOS = isMacOS;
+        m_isWindows = isWindows;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ?? [];
+        m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ?? [];
         m_cachedApplications = cachedApplications?.ToList() ?? [];
         m_lastRefreshUtc = lastRefreshUtc ?? DateTime.MinValue;
     }
@@ -75,7 +85,7 @@ internal sealed class ApplicationSearchService
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (string.IsNullOrWhiteSpace(query) || !m_isMacOS)
+        if (string.IsNullOrWhiteSpace(query) || !IsSupportedPlatform())
             return [];
 
         if (m_cachedApplications.Count == 0)
@@ -88,7 +98,7 @@ internal sealed class ApplicationSearchService
 
     public Task WarmAsync(CancellationToken cancellationToken = default)
     {
-        if (!m_isMacOS)
+        if (!IsSupportedPlatform())
             return Task.CompletedTask;
 
         if (m_cachedApplications.Count > 0 && DateTime.UtcNow - m_lastRefreshUtc <= RefreshInterval)
@@ -99,14 +109,14 @@ internal sealed class ApplicationSearchService
 
     internal async Task RefreshAsync(CancellationToken cancellationToken)
     {
-        if (!m_isMacOS)
+        if (!IsSupportedPlatform())
             return;
 
         await m_refreshLock.WaitAsync(cancellationToken);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var discoveredApplications = await Task.Run(DiscoverMacApplications, cancellationToken);
+            var discoveredApplications = await Task.Run(DiscoverApplications, cancellationToken);
             m_cachedApplications = discoveredApplications.ToList();
             m_lastRefreshUtc = DateTime.UtcNow;
             SaveIfPersistent();
@@ -125,6 +135,53 @@ internal sealed class ApplicationSearchService
         m_settings.CachedApplications = m_cachedApplications.ToList();
         m_settings.LastApplicationRefreshUtc = m_lastRefreshUtc;
         m_settings.Save();
+    }
+
+    private bool IsSupportedPlatform() => m_isMacOS || m_isWindows;
+
+    private static IReadOnlyList<DirectoryInfo> GetConfiguredOrDefaultMacRoots(ApplicationSearchSettings settings)
+    {
+        var configuredRoots = settings?.MacApplicationRoots?.Where(root => root != null).ToArray();
+        return configuredRoots is { Length: > 0 } ? configuredRoots : GetDefaultMacApplicationRoots();
+    }
+
+    private static IReadOnlyList<DirectoryInfo> GetConfiguredOrDefaultWindowsRoots(ApplicationSearchSettings settings)
+    {
+        var configuredRoots = settings?.WindowsApplicationRoots?.Where(root => root != null).ToArray();
+        return configuredRoots is { Length: > 0 } ? configuredRoots : GetDefaultWindowsApplicationRoots();
+    }
+
+    private static IReadOnlyList<DirectoryInfo> GetDefaultMacApplicationRoots()
+    {
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return
+        [
+            new DirectoryInfo("/Applications"),
+            new DirectoryInfo(Path.Combine(userProfile, "Applications"))
+        ];
+    }
+
+    private static IReadOnlyList<DirectoryInfo> GetDefaultWindowsApplicationRoots()
+    {
+        return new[]
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms),
+            Environment.GetFolderPath(Environment.SpecialFolder.Programs)
+        }
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => new DirectoryInfo(path))
+            .ToArray();
+    }
+
+    private IReadOnlyList<IndexedApplication> DiscoverApplications()
+    {
+        if (m_isMacOS)
+            return DiscoverMacApplications();
+
+        if (m_isWindows)
+            return DiscoverWindowsApplications();
+
+        return [];
     }
 
     private IReadOnlyList<IndexedApplication> DiscoverMacApplications()
@@ -151,6 +208,36 @@ internal sealed class ApplicationSearchService
                 })
             .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private IReadOnlyList<IndexedApplication> DiscoverWindowsApplications()
+    {
+        return m_windowsApplicationRoots
+            .Where(root => root?.Exists() == true)
+            .SelectMany(DiscoverWindowsShortcuts)
+            .GroupBy(file => file.FullName, StringComparer.OrdinalIgnoreCase)
+            .Select(
+                group =>
+                {
+                    var shortcutFile = group.First();
+                    var displayName = Path.GetFileNameWithoutExtension(shortcutFile.Name);
+                    return new IndexedApplication
+                    {
+                        DisplayName = displayName,
+                        SearchName = Normalize(displayName),
+                        ShortcutFile = shortcutFile
+                    };
+                })
+            .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IEnumerable<FileInfo> DiscoverWindowsShortcuts(DirectoryInfo root)
+    {
+        return root.TryGetFiles("*.lnk", SearchOption.AllDirectories)
+            .Concat(root.TryGetFiles("*.appref-ms", SearchOption.AllDirectories))
+            .Where(file => !string.IsNullOrWhiteSpace(file?.Name))
+            .DistinctBy(file => file.FullName, StringComparer.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<IndexedApplication> RankMatches(string query, IEnumerable<IndexedApplication> applications)

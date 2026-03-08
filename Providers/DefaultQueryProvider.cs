@@ -70,11 +70,11 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     app =>
                         new QueryResult(
                             app.DisplayName,
-                            app.BundleDirectory.FullName,
+                            app.LaunchPath,
                             "App",
                             new QueryActionDescriptor(
                                 QueryActionKind.OpenPath,
-                                app.BundleDirectory.FullName,
+                                app.LaunchPath,
                                 $"Launching {app.DisplayName}.")))
                 .ToArray(),
             $"Found {applications.Count} application{(applications.Count == 1 ? string.Empty : "s")}.");

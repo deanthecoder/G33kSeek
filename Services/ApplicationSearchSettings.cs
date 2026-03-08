@@ -19,11 +19,17 @@ namespace G33kSeek.Services;
 /// Persists application search roots and the cached app index for the launcher.
 /// </summary>
 /// <remarks>
-/// This allows app search to start quickly without rescanning macOS application folders on every launch.
+/// This stores user-overridden roots and the cached app index so search can start quickly between launches.
 /// </remarks>
 internal sealed class ApplicationSearchSettings : UserSettingsBase
 {
     public List<DirectoryInfo> MacApplicationRoots
+    {
+        get => Get<List<DirectoryInfo>>() ?? [];
+        set => Set(value ?? []);
+    }
+
+    public List<DirectoryInfo> WindowsApplicationRoots
     {
         get => Get<List<DirectoryInfo>>() ?? [];
         set => Set(value ?? []);
@@ -43,12 +49,8 @@ internal sealed class ApplicationSearchSettings : UserSettingsBase
 
     protected override void ApplyDefaults()
     {
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        MacApplicationRoots =
-        [
-            new DirectoryInfo("/Applications"),
-            new DirectoryInfo(Path.Combine(userProfile, "Applications"))
-        ];
+        MacApplicationRoots = [];
+        WindowsApplicationRoots = [];
         CachedApplications = [];
         LastApplicationRefreshUtc = DateTime.MinValue;
     }

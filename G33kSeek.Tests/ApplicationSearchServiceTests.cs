@@ -26,18 +26,20 @@ public class ApplicationSearchServiceTests
         rootDirectory.CreateSubdirectory("Safari.app");
         rootDirectory.CreateSubdirectory("Utilities");
 
-        var service = new ApplicationSearchService([rootDirectory], [], isMacOS: true);
+        var service = new ApplicationSearchService([rootDirectory], [], [], isMacOS: true, isWindows: false);
 
         var results = await service.SearchAsync("saf", CancellationToken.None);
 
         Assert.That(results, Has.Count.EqualTo(1));
         Assert.That(results[0].DisplayName, Is.EqualTo("Safari"));
+        Assert.That(results[0].BundleDirectory?.FullName, Is.EqualTo(rootDirectory.GetDir("Safari.app").FullName));
     }
 
     [Test]
     public async Task SearchAsyncPrefersStartsWithMatchesOverContainsMatches()
     {
         var service = new ApplicationSearchService(
+            [],
             [],
             [
                 new IndexedApplication
@@ -54,6 +56,7 @@ public class ApplicationSearchServiceTests
                 }
             ],
             isMacOS: true,
+            isWindows: false,
             DateTime.UtcNow);
 
         var results = await service.SearchAsync("code", CancellationToken.None);
@@ -63,9 +66,29 @@ public class ApplicationSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncDiscoversWindowsApplicationsFromStartMenuShortcuts()
+    {
+        using var tempDirectory = new TempDirectory();
+        var programsRoot = tempDirectory.GetDir("Programs");
+        programsRoot.Create();
+        var developmentDirectory = programsRoot.CreateSubdirectory("Development");
+        var jetBrainsDirectory = developmentDirectory.CreateSubdirectory("JetBrains");
+        var shortcutFile = jetBrainsDirectory.GetFile("Rider.lnk");
+        shortcutFile.WriteAllText(string.Empty);
+
+        var service = new ApplicationSearchService([], [programsRoot], [], isMacOS: false, isWindows: true);
+
+        var results = await service.SearchAsync("rid", CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Rider"));
+        Assert.That(results[0].ShortcutFile?.FullName, Is.EqualTo(shortcutFile.FullName));
+    }
+
+    [Test]
     public async Task SearchAsyncReturnsEmptyWhenPlatformIsUnsupported()
     {
-        var service = new ApplicationSearchService([], [], isMacOS: false);
+        var service = new ApplicationSearchService([], [], [], isMacOS: false, isWindows: false);
 
         var results = await service.SearchAsync("safari", CancellationToken.None);
 

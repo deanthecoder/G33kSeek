@@ -25,4 +25,8 @@ internal sealed class IndexedApplication
     public string SearchName { get; set; } = string.Empty;
 
     public DirectoryInfo BundleDirectory { get; set; }
+
+    public FileInfo ShortcutFile { get; set; }
+
+    public string LaunchPath => BundleDirectory?.FullName ?? ShortcutFile?.FullName ?? string.Empty;
 }
