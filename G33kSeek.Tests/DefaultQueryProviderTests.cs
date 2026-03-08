@@ -23,7 +23,8 @@ public class DefaultQueryProviderTests
         var response = await m_provider.QueryAsync(new QueryRequest(string.Empty, string.Empty, string.Empty), CancellationToken.None);
 
         Assert.That(response.Results, Has.Count.EqualTo(6));
-        Assert.That(response.StatusText, Is.EqualTo("Type to search, or use a prefix to switch modes."));
+        Assert.That(response.Results[2].Title, Is.EqualTo("Help and examples"));
+        Assert.That(response.StatusText, Is.EqualTo("Type an app or file name, or use =2+2, ? for help, > for commands."));
     }
 
     [Test]

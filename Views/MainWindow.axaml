@@ -23,7 +23,7 @@
         ShowInTaskbar="False"
         TransparencyBackgroundFallback="Transparent"
         TransparencyLevelHint="Transparent"
-        WindowStartupLocation="CenterScreen"
+        WindowStartupLocation="Manual"
         SystemDecorations="None"
         Topmost="True"
         Title="G33kSeek">

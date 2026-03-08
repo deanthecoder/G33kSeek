@@ -9,6 +9,7 @@
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
 using System;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using G33kSeek.Services;
@@ -41,7 +42,8 @@ public partial class MainWindow : Window
 
     public void PrepareForActivation()
     {
-        WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        WindowStartupLocation = WindowStartupLocation.Manual;
+        Position = GetLauncherPosition();
         SearchTextBox.Focus();
         SearchTextBox.SelectAll();
         SearchTextBox.CaretIndex = SearchTextBox.Text?.Length ?? 0;
@@ -86,5 +88,16 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
         }
+    }
+
+    private PixelPoint GetLauncherPosition()
+    {
+        var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
+        var workingArea = screen?.WorkingArea ?? new PixelRect(0, 0, 1440, 900);
+        var windowWidth = Bounds.Width > 0 ? (int)Bounds.Width : (int)Width;
+        var windowHeight = Bounds.Height > 0 ? (int)Bounds.Height : (int)Height;
+        var x = workingArea.X + Math.Max(0, (workingArea.Width - windowWidth) / 2);
+        var y = workingArea.Y + Math.Max(0, (workingArea.Height / 3) - (windowHeight / 2));
+        return new PixelPoint(x, y);
     }
 }

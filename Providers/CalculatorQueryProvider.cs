@@ -11,6 +11,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using G33kSeek.Models;
@@ -26,22 +27,30 @@ namespace G33kSeek.Providers;
 /// </remarks>
 public sealed class CalculatorQueryProvider : IQueryProvider
 {
+    private static readonly Regex WholeNumberRegex = new(@"(?<![\w.])\d+(?![\w.])", RegexOptions.Compiled);
+
     public string Prefix => "=";
+
+    public QueryProviderHelpEntry HelpEntry =>
+        new("Calculator", "Use = to evaluate maths expressions. Enter copies the result.", "=sin(pi/2)");
 
     public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
     {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+
         cancellationToken.ThrowIfCancellationRequested();
 
-        var expressionText = request?.ProviderQuery?.Trim() ?? string.Empty;
+        var expressionText = request.ProviderQuery?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(expressionText))
         {
             return Task.FromResult(
                 new QueryResponse(
                     [
                         new QueryResult(
-                            "Calculator",
+                            HelpEntry.Title,
                             "Type an expression like =2+2 or =sin(pi / 2). Trig uses radians.",
-                            "=")
+                            Prefix)
                     ],
                     "Calculator mode is ready."));
         }
@@ -79,7 +88,10 @@ public sealed class CalculatorQueryProvider : IQueryProvider
 
     private static string Evaluate(string expressionText)
     {
-        var expression = new Expression(expressionText, ExpressionOptions.IgnoreCaseAtBuiltInFunctions)
+        var normalizedExpressionText = NormalizeIntegerLiterals(expressionText);
+        var expression = new Expression(
+            normalizedExpressionText,
+            ExpressionOptions.IgnoreCaseAtBuiltInFunctions)
         {
             Parameters = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase)
             {
@@ -99,6 +111,13 @@ public sealed class CalculatorQueryProvider : IQueryProvider
 
         var rawResult = expression.Evaluate();
         return FormatResult(rawResult);
+    }
+
+    private static string NormalizeIntegerLiterals(string expressionText)
+    {
+        return WholeNumberRegex.Replace(
+            expressionText,
+            match => $"{match.Value}.0");
     }
 
     private static double ToDouble(object value) =>

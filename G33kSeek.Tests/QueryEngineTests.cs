@@ -43,6 +43,19 @@ public class QueryEngineTests
         Assert.That(grepProvider.LastRequest.Prefix, Is.EqualTo("??"));
     }
 
+    [Test]
+    public async Task QueryAsyncRoutesQuestionMarkInputToHelpProvider()
+    {
+        var helpProvider = new FakeQueryProvider("?", "help");
+        var engine = new QueryEngine([helpProvider, new FakeQueryProvider(string.Empty, "default")]);
+
+        var response = await engine.QueryAsync("?calc");
+
+        Assert.That(response.Results[0].Title, Is.EqualTo("help"));
+        Assert.That(helpProvider.LastRequest.ProviderQuery, Is.EqualTo("calc"));
+        Assert.That(helpProvider.LastRequest.Prefix, Is.EqualTo("?"));
+    }
+
     private sealed class FakeQueryProvider : QueryProvider
     {
         private readonly string m_title;

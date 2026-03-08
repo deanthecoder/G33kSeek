@@ -97,12 +97,24 @@ The first character(s) of the query determines the provider.
 |------|------|------|
 | *(none)* | File/App search | `rider` |
 | `=` | Calculator | `=2+2` |
-| `?` | Web search | `?avalonia docs` |
+| `?` | Help / examples | `?` or `?calc` |
 | `??` | File content search | `??TODO` |
 | `@` | AI prompt | `@summarise this text` |
 | `>` | Commands | `>shutdown` |
 
 When no prefix is used, the launcher performs **file and application search**.
+
+Current UX decisions:
+
+- A bare `?` should open **in-app help** rather than web search.
+- Typing after `?` can be used to **filter help topics** for now.
+- `@` remains reserved for **AI prompts**, not general web search.
+- Typing `http://`, `https://`, or `www.` should eventually be recognised as a **direct URL intent** and open in the browser.
+- When the search box is empty, the launcher should hint at examples such as:
+  - no prefix for app/file search
+  - `=2+2`
+  - `?` for help
+  - `>` for commands
 
 ---
 

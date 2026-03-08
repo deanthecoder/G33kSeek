@@ -8,6 +8,7 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using G33kSeek.Models;
@@ -26,9 +27,12 @@ public sealed class DefaultQueryProvider : IQueryProvider
 
     public Task<QueryResponse> QueryAsync(QueryRequest request, CancellationToken cancellationToken)
     {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+
         cancellationToken.ThrowIfCancellationRequested();
 
-        var query = request?.ProviderQuery?.Trim() ?? string.Empty;
+        var query = request.ProviderQuery?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(query))
         {
             return Task.FromResult(
@@ -36,12 +40,12 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     [
                         new QueryResult("App and file search", "Start typing with no prefix to search apps or files.", "default"),
                         new QueryResult("Calculator mode", "Use = to evaluate calculations like =2+2.", "="),
-                        new QueryResult("Web search", "Use ? to send a query to your browser.", "?"),
+                        new QueryResult("Help and examples", "Use ? to see available modes and examples.", "?"),
                         new QueryResult("Content search", "Use ?? to grep through files.", "??"),
                         new QueryResult("AI prompt", "Use @ to route text to an AI provider.", "@"),
                         new QueryResult("Commands", "Use > to execute launcher commands.", ">")
                     ],
-                    "Type to search, or use a prefix to switch modes."));
+                    "Type an app or file name, or use =2+2, ? for help, > for commands."));
         }
 
         return Task.FromResult(

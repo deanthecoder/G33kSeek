@@ -35,7 +35,7 @@ public class App : Application
             [
                 new CalculatorQueryProvider(),
                 new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path."),
-                new PlaceholderQueryProvider("?", "Web search", "Browser query routing is planned after calculator mode."),
+                new HelpQueryProvider(),
                 new PlaceholderQueryProvider("@", "AI prompt", "AI provider integration comes after the local query engine."),
                 new PlaceholderQueryProvider(">", "Commands", "Command routing will be added after the first providers settle."),
                 new DefaultQueryProvider()

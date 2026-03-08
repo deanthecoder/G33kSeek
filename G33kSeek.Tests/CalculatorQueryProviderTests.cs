@@ -30,6 +30,13 @@ public class CalculatorQueryProviderTests
     }
 
     [Test]
+    public void HelpEntryDescribesCalculatorMode()
+    {
+        Assert.That(m_provider.HelpEntry.Title, Is.EqualTo("Calculator"));
+        Assert.That(m_provider.HelpEntry.Example, Is.EqualTo("=sin(pi/2)"));
+    }
+
+    [Test]
     public async Task QueryAsyncEvaluatesTrigExpressionUsingRadians()
     {
         var response = await m_provider.QueryAsync(new QueryRequest("=sin(pi / 2)", "sin(pi / 2)", "="), CancellationToken.None);
@@ -37,5 +44,14 @@ public class CalculatorQueryProviderTests
         Assert.That(response.Results, Has.Count.EqualTo(1));
         var numericResult = double.Parse(response.Results[0].Title, CultureInfo.InvariantCulture);
         Assert.That(numericResult, Is.EqualTo(1d).Within(0.0000001d));
+    }
+
+    [Test]
+    public async Task QueryAsyncEvaluatesLargeIntegerMultiplicationWithoutOverflow()
+    {
+        var response = await m_provider.QueryAsync(new QueryRequest("=111111*111111", "111111*111111", "="), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("12345654321"));
     }
 }
