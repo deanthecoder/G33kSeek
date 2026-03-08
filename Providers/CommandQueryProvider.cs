@@ -11,6 +11,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using G33kSeek.Models;
@@ -25,17 +28,22 @@ namespace G33kSeek.Providers;
 /// </remarks>
 public sealed class CommandQueryProvider : IQueryProvider
 {
+    private readonly Func<Guid> m_guidFactory;
+    private readonly Func<IReadOnlyList<string>> m_ipAddressesAccessor;
     private readonly bool m_isMacOS;
     private readonly bool m_isWindows;
 
-    public CommandQueryProvider() : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows())
+    public CommandQueryProvider()
+        : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), () => Guid.NewGuid(), GetLocalIpAddresses)
     {
     }
 
-    internal CommandQueryProvider(bool isMacOS, bool isWindows)
+    internal CommandQueryProvider(bool isMacOS, bool isWindows, Func<Guid> guidFactory, Func<IReadOnlyList<string>> ipAddressesAccessor)
     {
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
+        m_guidFactory = guidFactory ?? throw new ArgumentNullException(nameof(guidFactory));
+        m_ipAddressesAccessor = ipAddressesAccessor ?? throw new ArgumentNullException(nameof(ipAddressesAccessor));
     }
 
     public string Prefix => ">";
@@ -50,9 +58,6 @@ public sealed class CommandQueryProvider : IQueryProvider
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!m_isMacOS && !m_isWindows)
-            return Task.FromResult(new QueryResponse([], "Commands are not supported on this platform yet."));
-
         var query = request.ProviderQuery?.Trim() ?? string.Empty;
         var commands = GetCommands()
             .Where(command => Matches(query, command))
@@ -61,7 +66,12 @@ public sealed class CommandQueryProvider : IQueryProvider
             .ToArray();
 
         if (commands.Length == 0)
+        {
+            if (!m_isMacOS && !m_isWindows && string.IsNullOrWhiteSpace(query))
+                return Task.FromResult(new QueryResponse([], "Only utility commands are available on this platform right now."));
+
             return Task.FromResult(new QueryResponse([], $"No commands matched \"{query}\"."));
+        }
 
         var statusText = string.IsNullOrWhiteSpace(query)
             ? "Commands ready. Type to filter, or press Enter to run the selected command."
@@ -69,17 +79,42 @@ public sealed class CommandQueryProvider : IQueryProvider
         return Task.FromResult(new QueryResponse(commands, statusText));
     }
 
-    private static QueryResult CreateResult(CommandDefinition definition)
+    private static QueryResult CreateResult(CommandDefinition definition) =>
+        definition.CreateResult();
+
+    private QueryResult CreateGuidResult()
     {
+        var guidText = m_guidFactory().ToString("D");
         return new QueryResult(
-            definition.Name,
-            definition.Description,
-            "Command",
+            "guid",
+            guidText,
+            "Value",
             new QueryActionDescriptor(
-                QueryActionKind.RunProcess,
-                definition.Executable,
-                arguments: definition.Arguments,
-                successMessage: definition.SuccessMessage));
+                QueryActionKind.CopyText,
+                guidText,
+                successMessage: "GUID copied."));
+    }
+
+    private QueryResult CreateIpResult()
+    {
+        var ipAddresses = m_ipAddressesAccessor()
+            .Where(address => !string.IsNullOrWhiteSpace(address))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(address => address, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (ipAddresses.Length == 0)
+            return new QueryResult("ip", "No local IPv4 address found.", "Value");
+
+        var ipText = string.Join(", ", ipAddresses);
+        return new QueryResult(
+            "ip",
+            ipText,
+            "Value",
+            new QueryActionDescriptor(
+                QueryActionKind.CopyText,
+                ipText,
+                successMessage: "IP address copied."));
     }
 
     private static bool Matches(string query, CommandDefinition definition)
@@ -88,54 +123,80 @@ public sealed class CommandQueryProvider : IQueryProvider
             return true;
 
         var normalizedQuery = query.Trim().ToLowerInvariant();
-        return definition.Name.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase) ||
-               definition.Description.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase);
+        return definition.Name.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase);
     }
 
     private IReadOnlyList<CommandDefinition> GetCommands()
     {
+        var commands = new List<CommandDefinition>
+        {
+            new("guid", "Generate a dashed GUID.", CreateGuidResult),
+            new("ip", "Show local IPv4 addresses.", CreateIpResult)
+        };
+
         if (m_isMacOS)
         {
-            return
-            [
-                new CommandDefinition("shutdown", "Shut down the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to shut down\"", "Shutdown requested."),
-                new CommandDefinition("restart", "Restart the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to restart\"", "Restart requested."),
-                new CommandDefinition("logoff", "Log out the current user.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to log out\"", "Log out requested.")
-            ];
+            commands.Add(new CommandDefinition("shutdown", "Shut down the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to shut down\"", "Shutdown requested."));
+            commands.Add(new CommandDefinition("restart", "Restart the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to restart\"", "Restart requested."));
+            commands.Add(new CommandDefinition("logoff", "Log out the current user.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to log out\"", "Log out requested."));
         }
-
-        if (m_isWindows)
+        else if (m_isWindows)
         {
-            return
-            [
-                new CommandDefinition("shutdown", "Shut down Windows immediately.", "shutdown", "/s /t 0", "Shutdown requested."),
-                new CommandDefinition("restart", "Restart Windows immediately.", "shutdown", "/r /t 0", "Restart requested."),
-                new CommandDefinition("logoff", "Log off the current Windows session.", "shutdown", "/l", "Log off requested.")
-            ];
+            commands.Add(new CommandDefinition("shutdown", "Shut down Windows immediately.", "shutdown", "/s /t 0", "Shutdown requested."));
+            commands.Add(new CommandDefinition("restart", "Restart Windows immediately.", "shutdown", "/r /t 0", "Restart requested."));
+            commands.Add(new CommandDefinition("logoff", "Log off the current Windows session.", "shutdown", "/l", "Log off requested."));
         }
 
-        return [];
+        return commands;
     }
 
     private sealed class CommandDefinition
     {
-        public CommandDefinition(string name, string description, string executable, string arguments, string successMessage)
+        public CommandDefinition(string name, string description, Func<QueryResult> createResult)
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             Description = description ?? throw new ArgumentNullException(nameof(description));
-            Executable = executable ?? throw new ArgumentNullException(nameof(executable));
-            Arguments = arguments ?? string.Empty;
-            SuccessMessage = successMessage ?? string.Empty;
+            CreateResult = createResult ?? throw new ArgumentNullException(nameof(createResult));
+        }
+
+        public CommandDefinition(string name, string description, string executable, string arguments, string successMessage)
+            : this(
+                name,
+                description,
+                () =>
+                    new QueryResult(
+                        name,
+                        description,
+                        "Command",
+                        new QueryActionDescriptor(
+                            QueryActionKind.RunProcess,
+                            executable,
+                            arguments: arguments,
+                            successMessage: successMessage)))
+        {
         }
 
         public string Name { get; }
 
         public string Description { get; }
 
-        public string Executable { get; }
+        public Func<QueryResult> CreateResult { get; }
+    }
 
-        public string Arguments { get; }
-
-        public string SuccessMessage { get; }
+    private static IReadOnlyList<string> GetLocalIpAddresses()
+    {
+        return NetworkInterface.GetAllNetworkInterfaces()
+            .Where(networkInterface =>
+                networkInterface.OperationalStatus == OperationalStatus.Up &&
+                networkInterface.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            .SelectMany(networkInterface => networkInterface.GetIPProperties().UnicastAddresses)
+            .Select(unicastAddress => unicastAddress.Address)
+            .Where(address =>
+                address.AddressFamily == AddressFamily.InterNetwork &&
+                !IPAddress.IsLoopback(address))
+            .Select(address => address.ToString())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(address => address, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 }

@@ -165,6 +165,8 @@ Today the first real no-prefix slice is application search on macOS and Windows:
 
 Today the first real `>` commands are:
 
+- `>guid`
+- `>ip`
 - `>shutdown`
 - `>restart`
 - `>logoff`
