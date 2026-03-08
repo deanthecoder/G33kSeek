@@ -25,6 +25,10 @@ The UI is built with **Avalonia** and the codebase is written in **C# (.NET)**.
 - Keep solutions **simple and performant** — this application must feel instant.
 - Avoid heavy dependencies unless clearly justified.
 - Git commit messages must start with `Feature:`, `Fix:`, or `Other:`, use sentence case, and end with a full stop.
+- Persist launcher settings via `DTC.Core.Settings.UserSettingsBase` rather than inventing a separate settings persistence layer.
+- Prefer method names without underscores. Async methods should end with `Async` unless a framework contract makes that impossible.
+- Ensure new public classes and public methods have unit tests unless that would be inappropriate or require disproportionate setup for very little gain.
+- Validate public method arguments appropriately, including null checks, range checks, and similar guard clauses where relevant.
 
 ---
 
@@ -186,6 +190,26 @@ TempFile
 ```
 
 over passing file-system paths around as plain strings where a richer type is sensible.
+
+---
+
+# Query Engine Decisions
+
+- Prefixes route queries, but **not every mode uses a prefix**:
+  - no prefix = default app/file search
+  - `=` = calculator
+  - other prefixes route to specialist providers as they are implemented
+- Providers should return:
+  - a list of visible results
+  - optional status text for the launcher UI
+- A query result should carry its **default Enter action** so the UI can stay generic.
+- Some providers may return a **single output value**:
+  - example: calculator
+  - pressing **Enter** should copy that value to the clipboard
+- Some providers may return a **refinable list**:
+  - example: file search or content search
+  - pressing **Enter** may open an item or copy a path depending on provider intent
+- Design provider/result interfaces so both “single computed value” and “filtered result list” fit the same pipeline.
 
 Useful helpers include:
 

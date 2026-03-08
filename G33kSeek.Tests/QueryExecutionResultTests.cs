@@ -8,22 +8,19 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
-using System;
-using Avalonia;
-using Avalonia.Controls;
+using G33kSeek.Models;
 
-namespace G33kSeek;
+namespace G33kSeek.Tests;
 
-internal static class Program
+public class QueryExecutionResultTests
 {
-    [STAThread]
-    public static void Main(string[] args)
+    [Test]
+    public void ConstructorAssignsProvidedValues()
     {
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
-    }
+        var result = new QueryExecutionResult(true, "Copied.", shouldHideLauncher: true);
 
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<Views.App>()
-            .UsePlatformDetect()
-            .LogToTrace();
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(result.StatusText, Is.EqualTo("Copied."));
+        Assert.That(result.ShouldHideLauncher, Is.True);
+    }
 }

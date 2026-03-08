@@ -1,27 +1,42 @@
+// Code authored by Dean Edis (DeanTheCoder).
+// Anyone is free to copy, modify, use, compile, or distribute this software,
+// either in source code form or as a compiled binary, for any purpose.
+// 
+// If you modify the code, please retain this copyright header,
+// and consider contributing back to the repository or letting us know
+// about your modifications. Your contributions are valued!
+// 
+// THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
+
 using System;
 using Avalonia.Controls;
 using Avalonia.Input;
+using G33kSeek.Services;
 using G33kSeek.ViewModels;
 
 namespace G33kSeek.Views;
 
 public partial class MainWindow : Window
 {
+    private readonly QueryExecutionService m_queryExecutionService;
     private readonly MainWindowViewModel m_viewModel;
 
     public MainWindow()
-        : this(new MainWindowViewModel())
+        : this(new MainWindowViewModel(new QueryEngine([])), new QueryExecutionService())
     {
     }
 
-    public MainWindow(MainWindowViewModel viewModel)
+    public MainWindow(
+        MainWindowViewModel viewModel,
+        QueryExecutionService queryExecutionService)
     {
         m_viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+        m_queryExecutionService = queryExecutionService ?? throw new ArgumentNullException(nameof(queryExecutionService));
         InitializeComponent();
         DataContext = m_viewModel;
-        Opened += MainWindow_OnOpened;
-        Deactivated += MainWindow_OnDeactivated;
-        KeyDown += MainWindow_OnKeyDown;
+        Opened += OnOpened;
+        Deactivated += OnDeactivated;
+        KeyDown += OnKeyDownAsync;
     }
 
     public void PrepareForActivation()
@@ -32,13 +47,13 @@ public partial class MainWindow : Window
         SearchTextBox.CaretIndex = SearchTextBox.Text?.Length ?? 0;
     }
 
-    private void MainWindow_OnOpened(object sender, EventArgs e) =>
+    private void OnOpened(object sender, EventArgs e) =>
         PrepareForActivation();
 
-    private void MainWindow_OnDeactivated(object sender, EventArgs e) =>
+    private void OnDeactivated(object sender, EventArgs e) =>
         Hide();
 
-    private void MainWindow_OnKeyDown(object sender, KeyEventArgs e)
+    private async void OnKeyDownAsync(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -55,6 +70,20 @@ public partial class MainWindow : Window
                     e.Handled = true;
                 }
 
+                break;
+
+            case Key.Enter:
+                if (m_viewModel.SelectedResult != null)
+                {
+                    var executionResult = await m_queryExecutionService.ExecuteAsync(m_viewModel.SelectedResult, this);
+                    if (!string.IsNullOrWhiteSpace(executionResult.StatusText))
+                        m_viewModel.StatusText = executionResult.StatusText;
+
+                    if (executionResult.ShouldHideLauncher)
+                        Hide();
+                }
+
+                e.Handled = true;
                 break;
         }
     }

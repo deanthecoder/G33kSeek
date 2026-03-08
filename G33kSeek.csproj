@@ -8,7 +8,7 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AssemblyName>G33kSeek</AssemblyName>
     <RootNamespace>G33kSeek</RootNamespace>
-    <DefaultItemExcludes>$(DefaultItemExcludes);DTC.Core\**;Installer\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);DTC.Core\**;Installer\**;G33kSeek.Tests\**</DefaultItemExcludes>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Version>1.0</Version>
@@ -31,6 +31,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.1.3" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.1.3" />
     <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="11.1.3" />
+    <PackageReference Include="NCalcSync" Version="5.11.0" />
     <PackageReference Include="SharpHook" Version="7.1.1" />
   </ItemGroup>
 
@@ -44,6 +45,7 @@
 
   <ItemGroup>
     <Compile Remove="DTC.Core\**\*.cs" />
+    <Compile Remove="G33kSeek.Tests\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

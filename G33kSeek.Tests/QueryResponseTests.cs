@@ -8,22 +8,21 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
-using System;
-using Avalonia;
-using Avalonia.Controls;
+using G33kSeek.Models;
 
-namespace G33kSeek;
+namespace G33kSeek.Tests;
 
-internal static class Program
+public class QueryResponseTests
 {
-    [STAThread]
-    public static void Main(string[] args)
+    [Test]
+    public void ConstructorAssignsResultsAndStatus()
     {
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
-    }
+        var rows = new[] { new QueryResult("42") };
 
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<Views.App>()
-            .UsePlatformDetect()
-            .LogToTrace();
+        var response = new QueryResponse(rows, "Ready.");
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("42"));
+        Assert.That(response.StatusText, Is.EqualTo("Ready."));
+    }
 }

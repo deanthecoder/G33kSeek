@@ -8,22 +8,20 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
-using System;
-using Avalonia;
-using Avalonia.Controls;
+using G33kSeek.Models;
 
-namespace G33kSeek;
+namespace G33kSeek.Tests;
 
-internal static class Program
+public class QueryRequestTests
 {
-    [STAThread]
-    public static void Main(string[] args)
+    [Test]
+    public void ConstructorAssignsProvidedValues()
     {
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
-    }
+        var request = new QueryRequest("=2+2", "2+2", "=");
 
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<Views.App>()
-            .UsePlatformDetect()
-            .LogToTrace();
+        Assert.That(request.RawQuery, Is.EqualTo("=2+2"));
+        Assert.That(request.ProviderQuery, Is.EqualTo("2+2"));
+        Assert.That(request.Prefix, Is.EqualTo("="));
+        Assert.That(request.HasPrefix, Is.True);
+    }
 }

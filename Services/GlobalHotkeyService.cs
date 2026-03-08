@@ -1,5 +1,14 @@
+// Code authored by Dean Edis (DeanTheCoder).
+// Anyone is free to copy, modify, use, compile, or distribute this software,
+// either in source code form or as a compiled binary, for any purpose.
+// 
+// If you modify the code, please retain this copyright header,
+// and consider contributing back to the repository or letting us know
+// about your modifications. Your contributions are valued!
+// 
+// THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
+
 using System;
-using System.Threading.Tasks;
 using SharpHook;
 using SharpHook.Data;
 
@@ -18,7 +27,6 @@ public sealed class GlobalHotkeyService : IDisposable
     private readonly LauncherWindowService m_launcherWindowService;
     private readonly TaskPoolGlobalHook m_hook;
     private DateTime m_lastToggleUtc;
-    private Task m_hookRunTask;
     private bool m_isStarted;
 
     public GlobalHotkeyService(LauncherWindowService launcherWindowService)
@@ -37,7 +45,7 @@ public sealed class GlobalHotkeyService : IDisposable
             return;
 
         m_hook.KeyPressed += Hook_OnKeyPressed;
-        m_hookRunTask = m_hook.RunAsync();
+        m_hook.RunAsync();
         m_isStarted = true;
     }
 

@@ -8,22 +8,18 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
-using System;
-using Avalonia;
-using Avalonia.Controls;
+namespace G33kSeek.Models;
 
-namespace G33kSeek;
-
-internal static class Program
+/// <summary>
+/// Describes the default action to perform when a query result is executed.
+/// </summary>
+/// <remarks>
+/// Different providers can return either a copy-style result, an opener result, or a no-op informational row.
+/// </remarks>
+public enum QueryActionKind
 {
-    [STAThread]
-    public static void Main(string[] args)
-    {
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
-    }
-
-    public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<Views.App>()
-            .UsePlatformDetect()
-            .LogToTrace();
+    None,
+    CopyText,
+    OpenPath,
+    OpenUri
 }
