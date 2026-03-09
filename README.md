@@ -43,11 +43,12 @@ The initial desktop shell now exists and includes:
 - a system tray icon with show / hide / exit actions
 - a first-cut global hotkey using **SharpHook** (`Ctrl+Space`)
 - no-prefix app search on macOS and Windows
+- no-prefix file search backed by a cached Documents index
 - direct URL opening for `http://`, `https://`, `www.`, and bare domains
 - quick no-prefix utility values like `now`, `date`, and `time`
 - no-prefix unit conversions for data sizes, temperature, weight, length, and hex/decimal
 - `?` help, filtered help, and quoted web search via Google
-- `>` commands for common folders, GUID/IP utilities, and basic system actions
+- `>` commands for common folders, GUID/IP utilities, log viewing, and basic system actions
 
 This is intentionally just the starting point before real providers and indexing are connected.
 
@@ -175,6 +176,12 @@ Today the first real no-prefix slice is application search on macOS and Windows:
 - matched by shortcut file name
 - refreshed from a lightweight shortcut scan
 
+Today no-prefix file search also includes:
+
+- a background-cached index of the user's Documents folder
+- default excludes for `.git`, `node_modules`, `bin`, `obj`, `.idea`, `.vs`, and `packages`
+- persisted cache data so searches stay fast between launches
+
 Current no-prefix utility queries also include:
 
 - `now`, `date`, `time`
@@ -193,6 +200,7 @@ Today the first real `>` commands are:
 - `>home`
 - `>ip`
 - `>lock`
+- `>log`
 - `>shutdown`
 - `>restart`
 - `>logoff`

@@ -17,6 +17,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using DTC.Core;
 using G33kSeek.Models;
 
 namespace G33kSeek.Providers;
@@ -32,11 +33,12 @@ public sealed class CommandQueryProvider : IQueryProvider
     private readonly Func<CommonFolderTargets> m_commonFolderTargetsAccessor;
     private readonly Func<Guid> m_guidFactory;
     private readonly Func<IReadOnlyList<string>> m_ipAddressesAccessor;
+    private readonly Func<FileInfo> m_logFileAccessor;
     private readonly bool m_isMacOS;
     private readonly bool m_isWindows;
 
     public CommandQueryProvider()
-        : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), () => Guid.NewGuid(), GetLocalIpAddresses, GetCommonFolderTargets)
+        : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), () => Guid.NewGuid(), GetLocalIpAddresses, GetCommonFolderTargets, () => Logger.Instance.File)
     {
     }
 
@@ -45,13 +47,15 @@ public sealed class CommandQueryProvider : IQueryProvider
         bool isWindows,
         Func<Guid> guidFactory,
         Func<IReadOnlyList<string>> ipAddressesAccessor,
-        Func<CommonFolderTargets> commonFolderTargetsAccessor)
+        Func<CommonFolderTargets> commonFolderTargetsAccessor,
+        Func<FileInfo> logFileAccessor)
     {
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
         m_guidFactory = guidFactory ?? throw new ArgumentNullException(nameof(guidFactory));
         m_ipAddressesAccessor = ipAddressesAccessor ?? throw new ArgumentNullException(nameof(ipAddressesAccessor));
         m_commonFolderTargetsAccessor = commonFolderTargetsAccessor ?? throw new ArgumentNullException(nameof(commonFolderTargetsAccessor));
+        m_logFileAccessor = logFileAccessor ?? throw new ArgumentNullException(nameof(logFileAccessor));
     }
 
     public string Prefix => ">";
@@ -67,8 +71,12 @@ public sealed class CommandQueryProvider : IQueryProvider
         cancellationToken.ThrowIfCancellationRequested();
 
         var query = request.ProviderQuery?.Trim() ?? string.Empty;
-        var commands = GetCommands()
+        var matchingCommands = GetCommands()
             .Where(command => Matches(query, command))
+            .ToArray();
+        var exactMatch = matchingCommands.FirstOrDefault(
+            command => command.Name.Equals(query, StringComparison.OrdinalIgnoreCase));
+        var commands = (exactMatch == null ? matchingCommands : [exactMatch])
             .OrderBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
             .Select(CreateQueryResult)
             .ToArray();
@@ -125,6 +133,22 @@ public sealed class CommandQueryProvider : IQueryProvider
                 successMessage: "IP address copied."));
     }
 
+    private QueryResult CreateLogResult()
+    {
+        var logFile = m_logFileAccessor();
+        if (logFile?.Exists != true)
+            return new QueryResult("log", "No log file is available yet.", "File");
+
+        return new QueryResult(
+            "log",
+            logFile.FullName,
+            "File",
+            new QueryActionDescriptor(
+                QueryActionKind.OpenPath,
+                logFile.FullName,
+                successMessage: "Opening log."));
+    }
+
     private IReadOnlyList<CommandDefinition> CreateFolderCommands()
     {
         var targets = m_commonFolderTargetsAccessor();
@@ -150,6 +174,7 @@ public sealed class CommandQueryProvider : IQueryProvider
         var commands = CreateFolderCommands().ToList();
         commands.Add(new CommandDefinition("guid", "Generate a dashed GUID.", CreateGuidResult));
         commands.Add(new CommandDefinition("ip", "Show local IPv4 addresses.", CreateIpResult));
+        commands.Add(new CommandDefinition("log", "Open the launcher log file.", CreateLogResult));
 
         if (m_isMacOS)
         {

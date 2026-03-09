@@ -27,15 +27,18 @@ namespace G33kSeek.Providers;
 public sealed class DefaultQueryProvider : IQueryProvider
 {
     private readonly ApplicationSearchService m_applicationSearchService;
+    private readonly FileSearchService m_fileSearchService;
     private readonly UnitConversionService m_unitConversionService;
 
-    public DefaultQueryProvider() : this(new ApplicationSearchService(), new UnitConversionService()) { }
+    public DefaultQueryProvider() : this(new ApplicationSearchService(), new FileSearchService(), new UnitConversionService()) { }
 
     internal DefaultQueryProvider(
         ApplicationSearchService applicationSearchService,
+        FileSearchService fileSearchService,
         UnitConversionService unitConversionService = null)
     {
         m_applicationSearchService = applicationSearchService ?? throw new ArgumentNullException(nameof(applicationSearchService));
+        m_fileSearchService = fileSearchService ?? throw new ArgumentNullException(nameof(fileSearchService));
         m_unitConversionService = unitConversionService ?? new UnitConversionService();
     }
 
@@ -60,7 +63,7 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     "Type an app or file name, or use =2+2, ? for help, > for commands."));
         }
 
-        if (TryCreateUrlResponse(query, out var urlResponse))
+        if (TryCreateExplicitUrlResponse(query, out var urlResponse))
             return Task.FromResult(urlResponse);
 
         if (TryCreateDateTimeResponse(query, out var dateTimeResponse))
@@ -69,13 +72,19 @@ public sealed class DefaultQueryProvider : IQueryProvider
         if (TryCreateUnitConversionResponse(query, out var unitConversionResponse))
             return Task.FromResult(unitConversionResponse);
 
-        return QueryApplicationsAsync(query, cancellationToken);
+        return QueryDefaultSearchAsync(query, cancellationToken);
     }
 
-    private static bool TryCreateUrlResponse(string query, out QueryResponse response)
+    private static bool TryCreateExplicitUrlResponse(string query, out QueryResponse response) =>
+        TryCreateUrlResponse(query, allowBareDomains: false, out response);
+
+    private static bool TryCreateImplicitUrlResponse(string query, out QueryResponse response) =>
+        TryCreateUrlResponse(query, allowBareDomains: true, out response);
+
+    private static bool TryCreateUrlResponse(string query, bool allowBareDomains, out QueryResponse response)
     {
         var trimmedQuery = query.Trim();
-        var candidate = BuildUrlCandidate(trimmedQuery);
+        var candidate = BuildUrlCandidate(trimmedQuery, allowBareDomains);
 
         if (candidate == null)
         {
@@ -104,7 +113,7 @@ public sealed class DefaultQueryProvider : IQueryProvider
         return true;
     }
 
-    private static string BuildUrlCandidate(string query)
+    private static string BuildUrlCandidate(string query, bool allowBareDomains)
     {
         if (string.IsNullOrWhiteSpace(query) ||
             query.Contains(' ') ||
@@ -121,6 +130,9 @@ public sealed class DefaultQueryProvider : IQueryProvider
 
         if (query.StartsWith("www.", StringComparison.OrdinalIgnoreCase))
             return $"https://{query}";
+
+        if (!allowBareDomains)
+            return null;
 
         var firstSlash = query.IndexOf('/');
         var firstQuestionMark = query.IndexOf('?');
@@ -223,21 +235,54 @@ public sealed class DefaultQueryProvider : IQueryProvider
         return true;
     }
 
-    private async Task<QueryResponse> QueryApplicationsAsync(string query, CancellationToken cancellationToken)
+    private async Task<QueryResponse> QueryDefaultSearchAsync(string query, CancellationToken cancellationToken)
     {
-        var applications = await m_applicationSearchService.SearchAsync(query, cancellationToken);
-        if (applications.Count == 0)
-            return new QueryResponse([], $"No applications matched \"{query}\".");
+        var applicationTask = m_applicationSearchService.SearchAsync(query, cancellationToken);
+        var fileTask = m_fileSearchService.SearchAsync(query, cancellationToken);
+        await Task.WhenAll(applicationTask, fileTask);
+
+        var applications = applicationTask.Result;
+        var fileResult = fileTask.Result;
+        if (applications.Count == 0 && fileResult.TotalMatchCount == 0)
+        {
+            if (TryCreateImplicitUrlResponse(query, out var urlResponse))
+                return urlResponse;
+
+            return new QueryResponse([], $"No apps or files matched \"{query}\".");
+        }
+
+        var results = applications
+            .Select(CreateApplicationResult)
+            .Concat(fileResult.VisibleFiles.Select(CreateFileResult))
+            .ToArray();
 
         return new QueryResponse(
-            applications
-                .Select(CreateApplicationResult)
-                .ToArray(),
-            $"Found {applications.Count} application{(applications.Count == 1 ? string.Empty : "s")}.");
+            results,
+            BuildSearchStatusText(applications.Count, fileResult.VisibleFiles.Count, fileResult.TotalMatchCount));
     }
 
     private static QueryResult CreateApplicationResult(IndexedApplication app)
     {
         return new QueryResult(app.DisplayName, app.Subtitle, "App", app.CreatePrimaryAction());
+    }
+
+    private static QueryResult CreateFileResult(IndexedFile file)
+    {
+        return new QueryResult(file.DisplayName, file.Subtitle, file.IsDirectory ? "Folder" : "File", file.CreatePrimaryAction());
+    }
+
+    private static string BuildSearchStatusText(int applicationCount, int visibleFileCount, int totalFileCount)
+    {
+        if (applicationCount > 0 && totalFileCount > 0)
+            return totalFileCount == visibleFileCount
+                ? $"Found {applicationCount} app{(applicationCount == 1 ? string.Empty : "s")} and {totalFileCount} item{(totalFileCount == 1 ? string.Empty : "s")}."
+                : $"Found {applicationCount} app{(applicationCount == 1 ? string.Empty : "s")} and showing {visibleFileCount} of {totalFileCount} items.";
+
+        if (applicationCount > 0)
+            return $"Found {applicationCount} app{(applicationCount == 1 ? string.Empty : "s")}.";
+
+        return totalFileCount == visibleFileCount
+            ? $"Found {totalFileCount} item{(totalFileCount == 1 ? string.Empty : "s")}."
+            : $"Showing {visibleFileCount} of {totalFileCount} items.";
     }
 }

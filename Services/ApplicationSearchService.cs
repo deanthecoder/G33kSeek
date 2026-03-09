@@ -16,6 +16,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using DTC.Core;
 using DTC.Core.Extensions;
 using G33kSeek.Models;
 
@@ -123,10 +124,23 @@ internal sealed class ApplicationSearchService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var stopwatch = Stopwatch.StartNew();
+            Logger.Instance.Info($"Refreshing application index across {(m_isMacOS ? m_macApplicationRoots.Count : m_windowsApplicationRoots.Count)} root(s).");
             var discoveredApplications = await Task.Run(DiscoverApplications, cancellationToken);
             m_cachedApplications = discoveredApplications.ToList();
             m_lastRefreshUtc = DateTime.UtcNow;
             SaveIfPersistent();
+            Logger.Instance.Info($"Application index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Indexed {m_cachedApplications.Count:N0} applications.");
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Instance.Warn("Application index refresh cancelled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.Instance.Exception("Application index refresh failed.", ex);
+            throw;
         }
         finally
         {

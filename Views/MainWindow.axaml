@@ -93,7 +93,8 @@
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <Grid ColumnDefinitions="*,Auto"
-                      Margin="2">
+                      Margin="2"
+                      Tapped="OnResultTappedAsync">
                   <StackPanel Spacing="2">
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"

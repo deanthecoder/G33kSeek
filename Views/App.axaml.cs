@@ -8,12 +8,15 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using DTC.Core;
 using G33kSeek.Providers;
 using G33kSeek.Services;
 using G33kSeek.ViewModels;
@@ -33,8 +36,11 @@ public class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            Logger.Instance.SysInfo();
+            Logger.Instance.Info("Starting G33kSeek.");
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var applicationSearchService = new ApplicationSearchService();
+            var fileSearchService = new FileSearchService();
 
             List<QueryProvider> providers = [];
             var supplementalHelpEntries = new[]
@@ -48,6 +54,10 @@ public class App : Application
                     "Type conversions like 10mb in bytes or 255 in hex with no prefix.",
                     "10mb in bytes"),
                 new QueryProviderHelpEntry(
+                    "File search",
+                    "Documents are indexed in the background so no-prefix queries can find files quickly.",
+                    "invoice"),
+                new QueryProviderHelpEntry(
                     "Web search",
                     "Use ?\"search text\" to run a Google web search.",
                     "?\"avalonia docs\"")
@@ -58,7 +68,7 @@ public class App : Application
                     .Concat(supplementalHelpEntries)
                     .ToArray();
 
-            providers.Add(new DefaultQueryProvider(applicationSearchService));
+            providers.Add(new DefaultQueryProvider(applicationSearchService, fileSearchService));
             providers.Add(new CalculatorQueryProvider());
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path.", "??TODO"));
@@ -77,6 +87,7 @@ public class App : Application
             m_trayIconService.Initialize();
             m_globalHotkeyService.Start();
             _ = applicationSearchService.WarmAsync();
+            _ = WarmFileIndexAsync(fileSearchService);
 
 #if DEBUG
             launcherWindowService.Show();
@@ -90,5 +101,17 @@ public class App : Application
     {
         m_globalHotkeyService?.Dispose();
         m_trayIconService?.Dispose();
+    }
+
+    private static async Task WarmFileIndexAsync(FileSearchService fileSearchService)
+    {
+        try
+        {
+            await fileSearchService.WarmAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Instance.Exception("File index warmup failed.", ex);
+        }
     }
 }

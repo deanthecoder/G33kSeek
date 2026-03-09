@@ -25,8 +25,8 @@ public class CommandQueryProviderTests
 
         var response = await provider.QueryAsync(new QueryRequest(">", string.Empty, ">"), CancellationToken.None);
 
-        Assert.That(response.Results, Has.Count.EqualTo(10));
-        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "desktop", "documents", "downloads", "guid", "home", "ip", "lock", "logoff", "restart", "shutdown" }));
+        Assert.That(response.Results, Has.Count.EqualTo(11));
+        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "desktop", "documents", "downloads", "guid", "home", "ip", "lock", "log", "logoff", "restart", "shutdown" }));
     }
 
     [Test]
@@ -38,7 +38,8 @@ public class CommandQueryProviderTests
             isWindows: true,
             guidFactory: () => Guid.Parse("11111111-2222-3333-4444-555555555555"),
             ipAddressesAccessor: () => ["192.168.1.20"],
-            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory));
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory),
+            logFileAccessor: () => tempDirectory.GetFile("log.txt"));
 
         var response = await provider.QueryAsync(new QueryRequest(">rest", "rest", ">"), CancellationToken.None);
 
@@ -69,7 +70,8 @@ public class CommandQueryProviderTests
             isWindows: true,
             guidFactory: () => Guid.Parse("11111111-2222-3333-4444-555555555555"),
             ipAddressesAccessor: () => ["192.168.1.20"],
-            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory));
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory),
+            logFileAccessor: () => tempDirectory.GetFile("log.txt"));
 
         var response = await provider.QueryAsync(new QueryRequest(">lock", "lock", ">"), CancellationToken.None);
 
@@ -131,6 +133,20 @@ public class CommandQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncReturnsLogFileCommand()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
+
+        var response = await provider.QueryAsync(new QueryRequest(">log", "log", ">"), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("log"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo(tempDirectory.GetFile("log.txt").FullName));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsDesktopFolderCommand()
     {
         using var tempDirectory = new TempDirectory();
@@ -146,12 +162,14 @@ public class CommandQueryProviderTests
 
     private static CommandQueryProvider CreateProvider(TempDirectory tempDirectory, IReadOnlyList<string> ipAddresses)
     {
+        tempDirectory.GetFile("log.txt").WriteAllText("test log");
         return new CommandQueryProvider(
             isMacOS: true,
             isWindows: false,
             guidFactory: () => Guid.Parse("11111111-2222-3333-4444-555555555555"),
             ipAddressesAccessor: () => ipAddresses,
-            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory));
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory),
+            logFileAccessor: () => tempDirectory.GetFile("log.txt"));
     }
 
     private static CommandQueryProvider.CommonFolderTargets CreateCommonFolderTargets(TempDirectory tempDirectory)

@@ -9,9 +9,11 @@
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
 using System;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using G33kSeek.Models;
 using G33kSeek.Services;
 using G33kSeek.ViewModels;
 using JetBrains.Annotations;
@@ -75,19 +77,34 @@ public partial class MainWindow : Window
                 break;
 
             case Key.Enter:
-                if (m_viewModel.SelectedResult != null)
-                {
-                    var executionResult = await QueryExecutionService.ExecuteAsync(m_viewModel.SelectedResult, this);
-                    if (!string.IsNullOrWhiteSpace(executionResult.StatusText))
-                        m_viewModel.StatusText = executionResult.StatusText;
-
-                    if (executionResult.ShouldHideLauncher)
-                        Hide();
-                }
+                await ExecuteSelectedResultAsync();
 
                 e.Handled = true;
                 break;
         }
+    }
+
+    private async void OnResultTappedAsync(object sender, TappedEventArgs e)
+    {
+        if (sender is not Control { DataContext: QueryResult result })
+            return;
+
+        m_viewModel.SelectedResult = result;
+        await ExecuteSelectedResultAsync();
+        e.Handled = true;
+    }
+
+    private async Task ExecuteSelectedResultAsync()
+    {
+        if (m_viewModel.SelectedResult == null)
+            return;
+
+        var executionResult = await QueryExecutionService.ExecuteAsync(m_viewModel.SelectedResult, this);
+        if (!string.IsNullOrWhiteSpace(executionResult.StatusText))
+            m_viewModel.StatusText = executionResult.StatusText;
+
+        if (executionResult.ShouldHideLauncher)
+            Hide();
     }
 
     private PixelPoint GetLauncherPosition()

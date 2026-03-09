@@ -114,8 +114,12 @@ Current UX decisions:
 - If the text after `?` is wrapped in quotes, it should be treated as an explicit **web search**.
 - `@` remains reserved for **AI prompts**, not general web search.
 - Typing `http://`, `https://`, or `www.` should be recognised as a **direct URL intent** and open in the browser.
-- The first built-in `>` commands are `desktop`, `documents`, `downloads`, `guid`, `home`, `ip`, `shutdown`, `restart`, and `logoff`.
+- The first built-in `>` commands are `desktop`, `documents`, `downloads`, `guid`, `home`, `ip`, `log`, `shutdown`, `restart`, and `logoff`.
 - No-prefix utility queries can also return quick conversions such as `10mb in bytes`, `255 in hex`, or `0xff in decimal`.
+- No-prefix file search should use a cached background index rather than walking the disk during queries.
+- The first file-search root should be the user's `Documents` folder.
+- Default file-index excludes should include `.git`, `node_modules`, `bin`, `obj`, `.idea`, `.vs`, and `packages`.
+- Large cached file indexes may be persisted in compressed form via `DTC.Core` helpers to keep settings size reasonable.
 - When the search box is empty, the launcher should hint at examples such as:
   - no prefix for app/file search
   - `=2+2`
