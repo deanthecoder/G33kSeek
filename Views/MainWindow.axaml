@@ -42,7 +42,8 @@
         <Border.Background>
           <ImageBrush Source="/Assets/main-window-bg.jpg"
                       Opacity="0.25"
-                      Stretch="UniformToFill" />
+                      AlignmentY="Top"
+                      Stretch="None" />
         </Border.Background>
       </Border>
 
