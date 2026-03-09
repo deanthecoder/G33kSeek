@@ -121,8 +121,9 @@ Current UX decisions:
   - `=2+2`
   - `?` for help
   - `>` for commands
-- For macOS application search, a fast top-level scan of `/Applications` and `~/Applications` is preferred.
+- For macOS application search, a fast shallow scan of `/Applications`, `/System/Applications`, and `~/Applications` is preferred.
 - macOS app results can use the `.app` bundle name directly as the display name; no deeper bundle inspection is required for the first slice.
+- It is acceptable to scan one nested folder level as well, so built-in apps inside `Utilities` are still discoverable.
 - For Windows application search, prefer the Start Menu `Programs` roots rather than scanning install directories.
 - Windows app results can use shortcut file names directly for the first slice, and launching the shortcut path is acceptable.
 

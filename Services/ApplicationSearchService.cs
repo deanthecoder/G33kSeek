@@ -157,6 +157,7 @@ internal sealed class ApplicationSearchService
         return
         [
             new DirectoryInfo("/Applications"),
+            new DirectoryInfo("/System/Applications"),
             new DirectoryInfo(Path.Combine(userProfile, "Applications"))
         ];
     }
@@ -188,11 +189,7 @@ internal sealed class ApplicationSearchService
     {
         return m_macApplicationRoots
             .Where(root => root?.Exists() == true)
-            .SelectMany(
-                root => root.TryGetDirs(
-                    searchOption: SearchOption.TopDirectoryOnly,
-                    includeDirectory: directory =>
-                        directory.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase)))
+            .SelectMany(DiscoverMacApplicationBundles)
             .GroupBy(app => app.FullName, StringComparer.OrdinalIgnoreCase)
             .Select(
                 group =>
@@ -208,6 +205,25 @@ internal sealed class ApplicationSearchService
                 })
             .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static IEnumerable<DirectoryInfo> DiscoverMacApplicationBundles(DirectoryInfo root)
+    {
+        var topLevelDirectories = root.TryGetDirs(searchOption: SearchOption.TopDirectoryOnly);
+        foreach (var directory in topLevelDirectories)
+        {
+            if (directory.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return directory;
+                continue;
+            }
+
+            foreach (var nestedDirectory in directory.TryGetDirs(searchOption: SearchOption.TopDirectoryOnly))
+            {
+                if (nestedDirectory.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+                    yield return nestedDirectory;
+            }
+        }
     }
 
     private IReadOnlyList<IndexedApplication> DiscoverWindowsApplications()

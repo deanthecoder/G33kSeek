@@ -36,6 +36,25 @@ public class ApplicationSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncDiscoversMacApplicationsNestedOneLevelDeep()
+    {
+        using var tempDirectory = new TempDirectory();
+        var rootDirectory = tempDirectory.GetDir("SystemApplications");
+        rootDirectory.Create();
+        rootDirectory.CreateSubdirectory("Calculator.app");
+        var utilitiesDirectory = rootDirectory.CreateSubdirectory("Utilities");
+        utilitiesDirectory.CreateSubdirectory("Terminal.app");
+
+        var service = new ApplicationSearchService([rootDirectory], [], [], isMacOS: true, isWindows: false);
+
+        var results = await service.SearchAsync("term", CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Terminal"));
+        Assert.That(results[0].BundleDirectory?.FullName, Is.EqualTo(utilitiesDirectory.GetDir("Terminal.app").FullName));
+    }
+
+    [Test]
     public async Task SearchAsyncPrefersStartsWithMatchesOverContainsMatches()
     {
         var service = new ApplicationSearchService(
