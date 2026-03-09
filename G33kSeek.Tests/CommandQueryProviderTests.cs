@@ -25,8 +25,8 @@ public class CommandQueryProviderTests
 
         var response = await provider.QueryAsync(new QueryRequest(">", string.Empty, ">"), CancellationToken.None);
 
-        Assert.That(response.Results, Has.Count.EqualTo(9));
-        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "desktop", "documents", "downloads", "guid", "home", "ip", "logoff", "restart", "shutdown" }));
+        Assert.That(response.Results, Has.Count.EqualTo(10));
+        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "desktop", "documents", "downloads", "guid", "home", "ip", "lock", "logoff", "restart", "shutdown" }));
     }
 
     [Test]
@@ -58,6 +58,26 @@ public class CommandQueryProviderTests
         var response = await provider.QueryAsync(new QueryRequest(">sh", "sh", ">"), CancellationToken.None);
 
         Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "shutdown" }));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsWindowsLockCommand()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = new CommandQueryProvider(
+            isMacOS: false,
+            isWindows: true,
+            guidFactory: () => Guid.Parse("11111111-2222-3333-4444-555555555555"),
+            ipAddressesAccessor: () => ["192.168.1.20"],
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory));
+
+        var response = await provider.QueryAsync(new QueryRequest(">lock", "lock", ">"), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("lock"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.RunProcess));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("rundll32.exe"));
+        Assert.That(response.Results[0].PrimaryAction?.Arguments, Is.EqualTo("user32.dll,LockWorkStation"));
     }
 
     [Test]

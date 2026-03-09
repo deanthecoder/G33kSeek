@@ -153,12 +153,14 @@ public sealed class CommandQueryProvider : IQueryProvider
 
         if (m_isMacOS)
         {
+            commands.Add(new CommandDefinition("lock", "Lock the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to keystroke \\\"q\\\" using {control down, command down}\"", "Lock requested."));
             commands.Add(new CommandDefinition("shutdown", "Shut down the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to shut down\"", "Shutdown requested."));
             commands.Add(new CommandDefinition("restart", "Restart the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to restart\"", "Restart requested."));
             commands.Add(new CommandDefinition("logoff", "Log out the current user.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to log out\"", "Log out requested."));
         }
         else if (m_isWindows)
         {
+            commands.Add(new CommandDefinition("lock", "Lock the current Windows session.", "rundll32.exe", "user32.dll,LockWorkStation", "Lock requested."));
             commands.Add(new CommandDefinition("shutdown", "Shut down Windows immediately.", "shutdown", "/s /t 0", "Shutdown requested."));
             commands.Add(new CommandDefinition("restart", "Restart Windows immediately.", "shutdown", "/r /t 0", "Restart requested."));
             commands.Add(new CommandDefinition("logoff", "Log off the current Windows session.", "shutdown", "/l", "Log off requested."));

@@ -192,6 +192,7 @@ Today the first real `>` commands are:
 - `>guid`
 - `>home`
 - `>ip`
+- `>lock`
 - `>shutdown`
 - `>restart`
 - `>logoff`
