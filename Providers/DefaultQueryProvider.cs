@@ -231,17 +231,13 @@ public sealed class DefaultQueryProvider : IQueryProvider
 
         return new QueryResponse(
             applications
-                .Select(
-                    app =>
-                        new QueryResult(
-                            app.DisplayName,
-                            app.LaunchPath,
-                            "App",
-                            new QueryActionDescriptor(
-                                QueryActionKind.OpenPath,
-                                app.LaunchPath,
-                                successMessage: $"Launching {app.DisplayName}.")))
+                .Select(CreateApplicationResult)
                 .ToArray(),
             $"Found {applications.Count} application{(applications.Count == 1 ? string.Empty : "s")}.");
+    }
+
+    private static QueryResult CreateApplicationResult(IndexedApplication app)
+    {
+        return new QueryResult(app.DisplayName, app.Subtitle, "App", app.CreatePrimaryAction());
     }
 }

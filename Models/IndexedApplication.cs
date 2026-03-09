@@ -8,6 +8,7 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using System;
 using System.IO;
 
 namespace G33kSeek.Models;
@@ -24,9 +25,46 @@ internal sealed class IndexedApplication
 
     public string SearchName { get; set; } = string.Empty;
 
+    public ApplicationLaunchKind LaunchKind { get; set; }
+
+    public string AppUserModelId { get; set; } = string.Empty;
+
     public DirectoryInfo BundleDirectory { get; set; }
 
     public FileInfo ShortcutFile { get; set; }
 
     public string LaunchPath => BundleDirectory?.FullName ?? ShortcutFile?.FullName ?? string.Empty;
+
+    public string Subtitle => ResolveLaunchKind() == ApplicationLaunchKind.WindowsShellApp ? AppUserModelId : LaunchPath;
+
+    public QueryActionDescriptor CreatePrimaryAction()
+    {
+        return ResolveLaunchKind() switch
+        {
+            ApplicationLaunchKind.OpenPath => new QueryActionDescriptor(
+                QueryActionKind.OpenPath,
+                LaunchPath,
+                successMessage: $"Launching {DisplayName}."),
+            ApplicationLaunchKind.WindowsShellApp => new QueryActionDescriptor(
+                QueryActionKind.RunProcess,
+                "explorer.exe",
+                arguments: $"\"shell:AppsFolder\\{AppUserModelId}\"",
+                successMessage: $"Launching {DisplayName}."),
+            _ => throw new InvalidOperationException($"Indexed application '{DisplayName}' does not have a valid launch target.")
+        };
+    }
+
+    private ApplicationLaunchKind ResolveLaunchKind()
+    {
+        if (LaunchKind != ApplicationLaunchKind.Auto)
+            return LaunchKind;
+
+        if (!string.IsNullOrWhiteSpace(LaunchPath))
+            return ApplicationLaunchKind.OpenPath;
+
+        if (!string.IsNullOrWhiteSpace(AppUserModelId))
+            return ApplicationLaunchKind.WindowsShellApp;
+
+        return ApplicationLaunchKind.Auto;
+    }
 }

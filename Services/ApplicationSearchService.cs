@@ -10,8 +10,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DTC.Core.Extensions;
@@ -33,13 +35,14 @@ internal sealed class ApplicationSearchService
     private readonly ApplicationSearchSettings m_settings;
     private readonly bool m_isMacOS;
     private readonly bool m_isWindows;
+    private readonly Func<IReadOnlyList<WindowsStartApp>> m_windowsStartAppsAccessor;
     private readonly IReadOnlyList<DirectoryInfo> m_macApplicationRoots;
     private readonly IReadOnlyList<DirectoryInfo> m_windowsApplicationRoots;
     private List<IndexedApplication> m_cachedApplications;
     private DateTime m_lastRefreshUtc;
 
     public ApplicationSearchService()
-        : this(new ApplicationSearchSettings(), null, null, OperatingSystem.IsMacOS(), OperatingSystem.IsWindows())
+        : this(new ApplicationSearchSettings(), null, null, OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), null)
     {
     }
 
@@ -48,11 +51,13 @@ internal sealed class ApplicationSearchService
         IEnumerable<DirectoryInfo> macApplicationRoots,
         IEnumerable<DirectoryInfo> windowsApplicationRoots,
         bool isMacOS,
-        bool isWindows)
+        bool isWindows,
+        Func<IReadOnlyList<WindowsStartApp>> windowsStartAppsAccessor)
     {
         m_settings = settings;
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
+        m_windowsStartAppsAccessor = windowsStartAppsAccessor ?? GetWindowsStartApps;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ??
                                 GetConfiguredOrDefaultMacRoots(settings);
         m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ??
@@ -67,11 +72,13 @@ internal sealed class ApplicationSearchService
         IEnumerable<IndexedApplication> cachedApplications,
         bool isMacOS,
         bool isWindows,
-        DateTime? lastRefreshUtc = null)
+        DateTime? lastRefreshUtc = null,
+        Func<IReadOnlyList<WindowsStartApp>> windowsStartAppsAccessor = null)
     {
         m_settings = null;
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
+        m_windowsStartAppsAccessor = windowsStartAppsAccessor ?? GetWindowsStartApps;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ?? [];
         m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ?? [];
         m_cachedApplications = cachedApplications?.ToList() ?? [];
@@ -199,6 +206,7 @@ internal sealed class ApplicationSearchService
                     return new IndexedApplication
                     {
                         DisplayName = displayName,
+                        LaunchKind = ApplicationLaunchKind.OpenPath,
                         SearchName = Normalize(displayName),
                         BundleDirectory = bundleDirectory
                     };
@@ -231,20 +239,37 @@ internal sealed class ApplicationSearchService
         return m_windowsApplicationRoots
             .Where(root => root?.Exists() == true)
             .SelectMany(DiscoverWindowsShortcuts)
-            .GroupBy(file => file.FullName, StringComparer.OrdinalIgnoreCase)
             .Select(
-                group =>
+                shortcutFile =>
                 {
-                    var shortcutFile = group.First();
                     var displayName = Path.GetFileNameWithoutExtension(shortcutFile.Name);
                     return new IndexedApplication
                     {
                         DisplayName = displayName,
+                        LaunchKind = ApplicationLaunchKind.OpenPath,
                         SearchName = Normalize(displayName),
                         ShortcutFile = shortcutFile
                     };
                 })
+            .Concat(DiscoverWindowsStartApps())
+            .GroupBy(app => app.SearchName, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderByDescending(app => app.ShortcutFile != null).First())
             .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private IReadOnlyList<IndexedApplication> DiscoverWindowsStartApps()
+    {
+        return m_windowsStartAppsAccessor()
+            .Where(app => !string.IsNullOrWhiteSpace(app?.Name) && !string.IsNullOrWhiteSpace(app.AppId))
+            .Select(
+                app => new IndexedApplication
+                {
+                    DisplayName = app.Name,
+                    LaunchKind = ApplicationLaunchKind.WindowsShellApp,
+                    SearchName = Normalize(app.Name),
+                    AppUserModelId = app.AppId
+                })
             .ToArray();
     }
 
@@ -300,4 +325,60 @@ internal sealed class ApplicationSearchService
                 .Where(character => char.IsLetterOrDigit(character) || char.IsWhiteSpace(character))
                 .ToArray());
     }
+
+    private static IReadOnlyList<WindowsStartApp> GetWindowsStartApps()
+    {
+        if (!OperatingSystem.IsWindows())
+            return [];
+
+        try
+        {
+            using var process = Process.Start(
+                new ProcessStartInfo("powershell.exe", "-NoProfile -Command \"Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress\"")
+                {
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false
+                });
+
+            if (process == null)
+                return [];
+
+            var output = process.StandardOutput.ReadToEnd();
+            if (!process.WaitForExit(5000))
+            {
+                process.Kill(true);
+                return [];
+            }
+
+            if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+                return [];
+
+            using var document = JsonDocument.Parse(output);
+            return document.RootElement.ValueKind switch
+            {
+                JsonValueKind.Object => [CreateWindowsStartApp(document.RootElement)],
+                JsonValueKind.Array => document.RootElement
+                    .EnumerateArray()
+                    .Where(element => element.ValueKind == JsonValueKind.Object)
+                    .Select(CreateWindowsStartApp)
+                    .Where(app => !string.IsNullOrWhiteSpace(app.Name) && !string.IsNullOrWhiteSpace(app.AppId))
+                    .ToArray(),
+                _ => []
+            };
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static WindowsStartApp CreateWindowsStartApp(JsonElement element)
+    {
+        return new WindowsStartApp(
+            element.TryGetProperty("Name", out var nameElement) ? nameElement.GetString() : string.Empty,
+            element.TryGetProperty("AppID", out var appIdElement) ? appIdElement.GetString() : string.Empty);
+    }
+
+    internal sealed record WindowsStartApp(string Name, string AppId);
 }

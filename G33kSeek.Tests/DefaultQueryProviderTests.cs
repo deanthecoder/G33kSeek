@@ -60,6 +60,34 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncReturnsWindowsStoreApplicationLaunchAction()
+    {
+        var applicationSearchService = new ApplicationSearchService(
+            [],
+            [],
+            [
+                new IndexedApplication
+                {
+                    DisplayName = "Company Portal",
+                    SearchName = "company portal",
+                    AppUserModelId = "Microsoft.CompanyPortal_8wekyb3d8bbwe!App"
+                }
+            ],
+            isMacOS: false,
+            isWindows: true,
+            DateTime.UtcNow);
+        var provider = new DefaultQueryProvider(applicationSearchService);
+
+        var response = await provider.QueryAsync(new QueryRequest("company portal", "company portal", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("Company Portal"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.RunProcess));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("explorer.exe"));
+        Assert.That(response.Results[0].PrimaryAction?.Arguments, Is.EqualTo("\"shell:AppsFolder\\Microsoft.CompanyPortal_8wekyb3d8bbwe!App\""));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsOpenUrlResultForHttpsAddress()
     {
         var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService());

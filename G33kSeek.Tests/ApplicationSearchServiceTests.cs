@@ -95,13 +95,39 @@ public class ApplicationSearchServiceTests
         var shortcutFile = jetBrainsDirectory.GetFile("Rider.lnk");
         shortcutFile.WriteAllText(string.Empty);
 
-        var service = new ApplicationSearchService([], [programsRoot], [], isMacOS: false, isWindows: true);
+        var service = new ApplicationSearchService(
+            [],
+            [programsRoot],
+            [],
+            isMacOS: false,
+            isWindows: true,
+            lastRefreshUtc: null,
+            windowsStartAppsAccessor: () => []);
 
         var results = await service.SearchAsync("rid", CancellationToken.None);
 
+        Assert.That(results.Any(result => result.DisplayName == "Rider"), Is.True);
+        var riderResult = results.Single(result => result.DisplayName == "Rider");
+        Assert.That(riderResult.ShortcutFile?.FullName, Is.EqualTo(shortcutFile.FullName));
+    }
+
+    [Test]
+    public async Task SearchAsyncDiscoversWindowsStoreApplicationsFromStartApps()
+    {
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [],
+            isMacOS: false,
+            isWindows: true,
+            lastRefreshUtc: null,
+            windowsStartAppsAccessor: () => [new ApplicationSearchService.WindowsStartApp("Company Portal", "Microsoft.CompanyPortal_8wekyb3d8bbwe!App")]);
+
+        var results = await service.SearchAsync("company portal", CancellationToken.None);
+
         Assert.That(results, Has.Count.EqualTo(1));
-        Assert.That(results[0].DisplayName, Is.EqualTo("Rider"));
-        Assert.That(results[0].ShortcutFile?.FullName, Is.EqualTo(shortcutFile.FullName));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Company Portal"));
+        Assert.That(results[0].AppUserModelId, Is.EqualTo("Microsoft.CompanyPortal_8wekyb3d8bbwe!App"));
     }
 
     [Test]
