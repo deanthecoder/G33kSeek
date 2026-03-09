@@ -22,8 +22,8 @@ public class UnitConversionServiceTests
         var success = service.TryConvert("10mb in bytes", out var convertedValue, out var description);
 
         Assert.That(success, Is.True);
-        Assert.That(convertedValue, Is.EqualTo("10485760 bytes"));
-        Assert.That(description, Is.EqualTo("10 MB = 10485760 bytes"));
+        Assert.That(convertedValue, Is.EqualTo("10,485,760 bytes"));
+        Assert.That(description, Is.EqualTo("10 MB = 10,485,760 bytes"));
     }
 
     [Test]
@@ -34,8 +34,8 @@ public class UnitConversionServiceTests
         var success = service.TryConvert("1kb in bytes", out var convertedValue, out var description);
 
         Assert.That(success, Is.True);
-        Assert.That(convertedValue, Is.EqualTo("1024 bytes"));
-        Assert.That(description, Is.EqualTo("1 KB = 1024 bytes"));
+        Assert.That(convertedValue, Is.EqualTo("1,024 bytes"));
+        Assert.That(description, Is.EqualTo("1 KB = 1,024 bytes"));
     }
 
     [Test]
@@ -96,6 +96,30 @@ public class UnitConversionServiceTests
         Assert.That(success, Is.True);
         Assert.That(convertedValue, Is.EqualTo("10 st 10 lb"));
         Assert.That(description, Is.EqualTo("68 kg = 10 st 10 lb"));
+    }
+
+    [Test]
+    public void TryConvertReturnsGroupedKilogramsForLargeStoneValue()
+    {
+        var service = new UnitConversionService();
+
+        var success = service.TryConvert("13000st in kilograms", out var convertedValue, out var description);
+
+        Assert.That(success, Is.True);
+        Assert.That(convertedValue, Is.EqualTo("82,553.8113 kg"));
+        Assert.That(description, Is.EqualTo("13,000 st = 82,553.8113 kg"));
+    }
+
+    [Test]
+    public void TryConvertReturnsGroupedStoneForLargeKilogramValue()
+    {
+        var service = new UnitConversionService();
+
+        var success = service.TryConvert("82553.8113kg in stone", out var convertedValue, out var description);
+
+        Assert.That(success, Is.True);
+        Assert.That(convertedValue, Is.EqualTo("13,000 st 0 lb"));
+        Assert.That(description, Is.EqualTo("82,553.8113 kg = 13,000 st 0 lb"));
     }
 
     [Test]

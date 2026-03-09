@@ -191,7 +191,7 @@ public class DefaultQueryProviderTests
         var response = await provider.QueryAsync(new QueryRequest("10mb in bytes", "10mb in bytes", string.Empty), CancellationToken.None);
 
         Assert.That(response.Results, Has.Count.EqualTo(1));
-        Assert.That(response.Results[0].Title, Is.EqualTo("10485760 bytes"));
+        Assert.That(response.Results[0].Title, Is.EqualTo("10,485,760 bytes"));
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
     }
 

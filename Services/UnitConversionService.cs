@@ -429,11 +429,16 @@ internal sealed class UnitConversionService
         return "ft";
     }
 
-    private static string FormatNumber(decimal value) =>
-        value.ToString("0.################", CultureInfo.InvariantCulture);
+    private static string FormatNumber(decimal value)
+    {
+        var format = decimal.Truncate(value) == value
+            ? "#,0"
+            : "#,0.################";
+        return value.ToString(format, CultureInfo.InvariantCulture);
+    }
 
     private static string FormatApproximateNumber(decimal value) =>
-        Math.Round(value, 4, MidpointRounding.AwayFromZero).ToString("0.####", CultureInfo.InvariantCulture);
+        Math.Round(value, 4, MidpointRounding.AwayFromZero).ToString("#,0.####", CultureInfo.InvariantCulture);
 
     private static string FormatStoneAndPounds(decimal poundsValue)
     {
@@ -447,6 +452,6 @@ internal sealed class UnitConversionService
             roundedPounds = 0m;
         }
 
-        return $"{wholeStone.ToString(CultureInfo.InvariantCulture)} st {roundedPounds.ToString("0", CultureInfo.InvariantCulture)} lb";
+        return $"{wholeStone.ToString("#,0", CultureInfo.InvariantCulture)} st {roundedPounds.ToString("0", CultureInfo.InvariantCulture)} lb";
     }
 }
