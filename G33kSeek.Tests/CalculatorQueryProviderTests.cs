@@ -54,4 +54,32 @@ public class CalculatorQueryProviderTests
         Assert.That(response.Results, Has.Count.EqualTo(1));
         Assert.That(response.Results[0].Title, Is.EqualTo("12345654321"));
     }
+
+    [Test]
+    public async Task QueryAsyncTreatsCaretAsExponentiation()
+    {
+        var response = await m_provider.QueryAsync(new QueryRequest("=(1^2)-4.0*sin(4.5)", "(1^2)-4.0*sin(4.5)", "="), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        var numericResult = double.Parse(response.Results[0].Title, CultureInfo.InvariantCulture);
+        Assert.That(numericResult, Is.EqualTo(4.91012047066039d).Within(0.0000001d));
+    }
+
+    [Test]
+    public async Task QueryAsyncAppliesExponentiationBeforeMultiplication()
+    {
+        var response = await m_provider.QueryAsync(new QueryRequest("=2+3^2*4", "2+3^2*4", "="), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("38"));
+    }
+
+    [Test]
+    public async Task QueryAsyncTreatsExponentiationAsRightAssociative()
+    {
+        var response = await m_provider.QueryAsync(new QueryRequest("=2^3^2", "2^3^2", "="), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("512"));
+    }
 }

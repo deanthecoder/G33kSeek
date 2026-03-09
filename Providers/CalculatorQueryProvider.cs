@@ -88,7 +88,7 @@ public sealed class CalculatorQueryProvider : IQueryProvider
 
     private static string Evaluate(string expressionText)
     {
-        var normalizedExpressionText = NormalizeIntegerLiterals(expressionText);
+        var normalizedExpressionText = NormalizeIntegerLiterals(NormalizeExponentiation(expressionText));
         var expression = new Expression(
             normalizedExpressionText,
             ExpressionOptions.IgnoreCaseAtBuiltInFunctions)
@@ -113,6 +113,14 @@ public sealed class CalculatorQueryProvider : IQueryProvider
         return FormatResult(rawResult);
     }
 
+    private static string NormalizeExponentiation(string expressionText)
+    {
+        if (string.IsNullOrWhiteSpace(expressionText) || !expressionText.Contains('^'))
+            return expressionText;
+
+        return new ExponentiationExpressionRewriter(expressionText).Rewrite();
+    }
+
     private static string NormalizeIntegerLiterals(string expressionText)
     {
         return WholeNumberRegex.Replace(
@@ -134,5 +142,202 @@ public sealed class CalculatorQueryProvider : IQueryProvider
             IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
             _ => rawResult.ToString() ?? string.Empty
         };
+    }
+
+    private sealed class ExponentiationExpressionRewriter
+    {
+        private readonly string m_expressionText;
+        private int m_index;
+
+        public ExponentiationExpressionRewriter(string expressionText)
+        {
+            m_expressionText = expressionText ?? throw new ArgumentNullException(nameof(expressionText));
+        }
+
+        public string Rewrite()
+        {
+            var rewrittenExpression = ParseExpression();
+            SkipWhitespace();
+            if (!IsAtEnd)
+                throw new FormatException($"Unexpected token '{Current}' in expression.");
+
+            return rewrittenExpression;
+        }
+
+        private bool IsAtEnd => m_index >= m_expressionText.Length;
+
+        private char Current => IsAtEnd ? '\0' : m_expressionText[m_index];
+
+        private string ParseExpression() => ParseAdditive();
+
+        private string ParseAdditive()
+        {
+            var left = ParseMultiplicative();
+            while (true)
+            {
+                SkipWhitespace();
+                if (!TryConsume('+') && !TryConsume('-'))
+                    return left;
+
+                var operatorCharacter = m_expressionText[m_index - 1];
+                var right = ParseMultiplicative();
+                left = $"({left}{operatorCharacter}{right})";
+            }
+        }
+
+        private string ParseMultiplicative()
+        {
+            var left = ParseUnary();
+            while (true)
+            {
+                SkipWhitespace();
+                if (!TryConsume('*') && !TryConsume('/') && !TryConsume('%'))
+                    return left;
+
+                var operatorCharacter = m_expressionText[m_index - 1];
+                var right = ParseUnary();
+                left = $"({left}{operatorCharacter}{right})";
+            }
+        }
+
+        private string ParseUnary()
+        {
+            SkipWhitespace();
+            if (TryConsume('+'))
+                return $"(+{ParseUnary()})";
+
+            if (TryConsume('-'))
+                return $"(-{ParseUnary()})";
+
+            return ParsePower();
+        }
+
+        private string ParsePower()
+        {
+            var left = ParsePrimary();
+            SkipWhitespace();
+            if (!TryConsume('^'))
+                return left;
+
+            var right = ParseUnary();
+            return $"Pow({left},{right})";
+        }
+
+        private string ParsePrimary()
+        {
+            SkipWhitespace();
+            if (TryConsume('('))
+            {
+                var innerExpression = ParseExpression();
+                SkipWhitespace();
+                Expect(')');
+                return $"({innerExpression})";
+            }
+
+            if (IsIdentifierStart(Current))
+                return ParseIdentifierOrFunctionCall();
+
+            if (char.IsDigit(Current) || Current == '.')
+                return ParseNumber();
+
+            throw new FormatException($"Unexpected token '{Current}' in expression.");
+        }
+
+        private string ParseIdentifierOrFunctionCall()
+        {
+            var identifier = ParseIdentifier();
+            SkipWhitespace();
+            if (!TryConsume('('))
+                return identifier;
+
+            var arguments = new List<string>();
+            SkipWhitespace();
+            if (!TryConsume(')'))
+            {
+                do
+                {
+                    arguments.Add(ParseExpression());
+                    SkipWhitespace();
+                } while (TryConsume(','));
+
+                Expect(')');
+            }
+
+            return $"{identifier}({string.Join(", ", arguments)})";
+        }
+
+        private string ParseIdentifier()
+        {
+            var startIndex = m_index;
+            while (!IsAtEnd && IsIdentifierPart(Current))
+                m_index++;
+
+            return m_expressionText[startIndex..m_index];
+        }
+
+        private string ParseNumber()
+        {
+            var startIndex = m_index;
+
+            if (Current == '.')
+                m_index++;
+
+            while (!IsAtEnd && char.IsDigit(Current))
+                m_index++;
+
+            if (!IsAtEnd && Current == '.')
+            {
+                m_index++;
+                while (!IsAtEnd && char.IsDigit(Current))
+                    m_index++;
+            }
+
+            if (!IsAtEnd && (Current == 'e' || Current == 'E'))
+            {
+                var exponentIndex = m_index;
+                m_index++;
+                if (!IsAtEnd && (Current == '+' || Current == '-'))
+                    m_index++;
+
+                var hasExponentDigits = false;
+                while (!IsAtEnd && char.IsDigit(Current))
+                {
+                    hasExponentDigits = true;
+                    m_index++;
+                }
+
+                if (!hasExponentDigits)
+                    m_index = exponentIndex;
+            }
+
+            return m_expressionText[startIndex..m_index];
+        }
+
+        private void SkipWhitespace()
+        {
+            while (!IsAtEnd && char.IsWhiteSpace(Current))
+                m_index++;
+        }
+
+        private bool TryConsume(char character)
+        {
+            if (Current != character)
+                return false;
+
+            m_index++;
+            return true;
+        }
+
+        private void Expect(char character)
+        {
+            if (!TryConsume(character))
+                throw new FormatException($"Expected '{character}' in expression.");
+        }
+
+        private static bool IsIdentifierStart(char character) =>
+            char.IsLetter(character) || character == '_';
+
+        private static bool IsIdentifierPart(char character) =>
+            char.IsLetterOrDigit(character) || character == '_';
     }
 }
