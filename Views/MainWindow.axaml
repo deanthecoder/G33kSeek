@@ -7,8 +7,10 @@
         x:Class="G33kSeek.Views.MainWindow"
         x:DataType="viewModels:MainWindowViewModel"
         Width="760"
-        MinWidth="640"
-        MaxWidth="840"
+        Height="560"
+        MinWidth="760"
+        MinHeight="560"
+        MaxWidth="760"
         MaxHeight="560"
         Background="Transparent"
         BorderBrush="Transparent"
@@ -19,7 +21,6 @@
         Icon="/Assets/app.ico"
         Padding="0"
         ShowInTaskbar="False"
-        SizeToContent="Height"
         TransparencyBackgroundFallback="Transparent"
         TransparencyLevelHint="Transparent"
         WindowStartupLocation="Manual"
@@ -34,7 +35,8 @@
           Background="#E0000000"
           ClipToBounds="True"
           Margin="18"
-          Padding="0">
+          Padding="0"
+          VerticalAlignment="Top">
     <Grid>
       <Border>
         <Border.Background>

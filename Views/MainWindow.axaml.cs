@@ -20,6 +20,8 @@ namespace G33kSeek.Views;
 
 public partial class MainWindow : Window
 {
+    private const int DefaultVisibleLauncherHeight = 220;
+
     private readonly MainWindowViewModel m_viewModel;
 
     [UsedImplicitly]
@@ -93,9 +95,8 @@ public partial class MainWindow : Window
         var screen = Screens.ScreenFromWindow(this) ?? Screens.Primary;
         var workingArea = screen?.WorkingArea ?? new PixelRect(0, 0, 1440, 900);
         var windowWidth = Bounds.Width > 0 ? (int)Bounds.Width : (int)Width;
-        var windowHeight = Bounds.Height > 0 ? (int)Bounds.Height : (int)Height;
         var x = workingArea.X + Math.Max(0, (workingArea.Width - windowWidth) / 2);
-        var y = workingArea.Y + Math.Max(0, (workingArea.Height / 3) - (windowHeight / 2));
+        var y = workingArea.Y + Math.Max(0, (workingArea.Height / 4) - (DefaultVisibleLauncherHeight / 2));
         return new PixelPoint(x, y);
     }
 }
