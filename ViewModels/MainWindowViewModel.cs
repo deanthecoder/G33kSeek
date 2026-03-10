@@ -11,6 +11,7 @@
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia.Threading;
 using DTC.Core.ViewModels;
 using G33kSeek.Models;
 using G33kSeek.Services;
@@ -34,11 +35,20 @@ public class MainWindowViewModel : ViewModelBase
     private double m_resultsPanelOpacity;
     private double m_resultsPanelMaxHeight;
     private CancellationTokenSource m_queryCancellation;
+    private bool m_isRefreshActive;
 
     public MainWindowViewModel(QueryEngine queryEngine = null)
+        : this(queryEngine, null)
+    {
+    }
+
+    internal MainWindowViewModel(QueryEngine queryEngine, IIndexRefreshCoordinator indexRefreshCoordinator)
     {
         m_queryEngine = queryEngine;
         Results = new ObservableCollection<QueryResult>();
+        IsRefreshActive = indexRefreshCoordinator?.IsRefreshing == true;
+        if (indexRefreshCoordinator != null)
+            indexRefreshCoordinator.RefreshStateChanged += (_, _) => UpdateRefreshState(indexRefreshCoordinator.IsRefreshing);
         _ = RefreshResultsAsync();
     }
 
@@ -92,6 +102,12 @@ public class MainWindowViewModel : ViewModelBase
         private set => SetField(ref m_resultsPanelMaxHeight, value);
     }
 
+    public bool IsRefreshActive
+    {
+        get => m_isRefreshActive;
+        private set => SetField(ref m_isRefreshActive, value);
+    }
+
     private async Task RefreshResultsAsync()
     {
         m_queryCancellation?.Cancel();
@@ -113,5 +129,16 @@ public class MainWindowViewModel : ViewModelBase
         StatusText = string.IsNullOrWhiteSpace(response.StatusText)
             ? "Ready."
             : response.StatusText;
+    }
+
+    private void UpdateRefreshState(bool isRefreshActive)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            IsRefreshActive = isRefreshActive;
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => IsRefreshActive = isRefreshActive);
     }
 }

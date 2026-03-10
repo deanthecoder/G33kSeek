@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using G33kSeek.Models;
 using G33kSeek.Services;
 using G33kSeek.ViewModels;
@@ -39,7 +40,7 @@ public partial class MainWindow : Window
         DataContext = m_viewModel;
         Opened += OnOpened;
         Deactivated += OnDeactivated;
-        KeyDown += OnKeyDownAsync;
+        AddHandler(KeyDownEvent, OnPreviewKeyDownAsync, RoutingStrategies.Tunnel);
     }
 
     public void PrepareForActivation()
@@ -57,7 +58,7 @@ public partial class MainWindow : Window
     private void OnDeactivated(object sender, EventArgs e) =>
         Hide();
 
-    private async void OnKeyDownAsync(object sender, KeyEventArgs e)
+    private async void OnPreviewKeyDownAsync(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -67,13 +68,13 @@ public partial class MainWindow : Window
                 break;
 
             case Key.Down:
-                if (ResultsListBox.ItemCount > 0)
-                {
-                    ResultsListBox.Focus();
-                    ResultsListBox.SelectedIndex = Math.Max(ResultsListBox.SelectedIndex, 0);
-                    e.Handled = true;
-                }
+                MoveSelection(1);
+                e.Handled = true;
+                break;
 
+            case Key.Up:
+                MoveSelection(-1);
+                e.Handled = true;
                 break;
 
             case Key.Enter:
@@ -84,9 +85,10 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnResultTappedAsync(object sender, TappedEventArgs e)
+    private async void OnResultsListBoxDoubleTappedAsync(object sender, TappedEventArgs e)
     {
-        if (sender is not Control { DataContext: QueryResult result })
+        var result = TryGetResultFromSource(e.Source) ?? ResultsListBox.SelectedItem as QueryResult;
+        if (result == null)
             return;
 
         m_viewModel.SelectedResult = result;
@@ -115,5 +117,40 @@ public partial class MainWindow : Window
         var x = workingArea.X + Math.Max(0, (workingArea.Width - windowWidth) / 2);
         var y = workingArea.Y + Math.Max(0, (workingArea.Height / 4) - (DefaultVisibleLauncherHeight / 2));
         return new PixelPoint(x, y);
+    }
+
+    private void MoveSelection(int offset)
+    {
+        if (ResultsListBox.ItemCount <= 0)
+            return;
+
+        var selectedIndex = GetNextSelectedIndex(ResultsListBox.SelectedIndex, ResultsListBox.ItemCount, offset);
+        if (selectedIndex < 0)
+            return;
+
+        ResultsListBox.SelectedIndex = selectedIndex;
+        ResultsListBox.ScrollIntoView(selectedIndex);
+    }
+
+    internal static int GetNextSelectedIndex(int currentIndex, int itemCount, int offset)
+    {
+        if (itemCount <= 0 || offset == 0)
+            return -1;
+
+        if (currentIndex < 0)
+            return offset > 0 ? 0 : itemCount - 1;
+
+        return Math.Clamp(currentIndex + offset, 0, itemCount - 1);
+    }
+
+    internal static QueryResult TryGetResultFromSource(object source)
+    {
+        for (var current = source as StyledElement; current != null; current = current.Parent)
+        {
+            if (current.DataContext is QueryResult result)
+                return result;
+        }
+
+        return null;
     }
 }

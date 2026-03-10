@@ -29,7 +29,7 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchService
 {
-    private const int CurrentCacheFormatVersion = 4;
+    private const int CurrentCacheFormatVersion = 5;
     private const int MaxVisibleResults = 25;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
     private static readonly HashSet<string> ExcludedDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
@@ -39,7 +39,6 @@ internal sealed class FileSearchService
         ".svn",
         ".idea",
         ".vs",
-        "bin",
         "obj",
         "node_modules",
         "packages"
@@ -47,9 +46,12 @@ internal sealed class FileSearchService
 
     private readonly SemaphoreSlim m_refreshLock = new(1, 1);
     private readonly FileSearchSettings m_settings;
-    private readonly IReadOnlyList<DirectoryInfo> m_searchRoots;
+    private readonly List<DirectoryInfo> m_searchRoots;
+    private readonly Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> m_discoverFilesOverride;
+    private bool m_hasExplicitSearchRoots;
     private List<IndexedFile> m_cachedFiles;
     private DateTime m_lastRefreshUtc;
+    private bool m_isRefreshing;
 
     public FileSearchService()
         : this(new FileSearchSettings(), null, null)
@@ -59,27 +61,35 @@ internal sealed class FileSearchService
     private FileSearchService(
         FileSearchSettings settings,
         IEnumerable<DirectoryInfo> searchRoots,
-        IEnumerable<IndexedFile> cachedFiles)
+        IEnumerable<IndexedFile> cachedFiles,
+        Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> discoverFilesOverride = null)
     {
         m_settings = settings;
-        m_searchRoots = searchRoots?.ToArray() ?? GetConfiguredOrDefaultRoots(settings);
+        m_discoverFilesOverride = discoverFilesOverride;
+        var configuredRoots = settings?.SearchRoots?.Where(root => root != null).ToArray() ?? [];
+        m_hasExplicitSearchRoots = configuredRoots.Length > 0;
+        m_searchRoots = (searchRoots?.ToArray() ?? (m_hasExplicitSearchRoots ? configuredRoots : GetDefaultSearchRoots(OperatingSystem.IsWindows())))
+            .ToList();
         var isCompatibleCache = settings?.CacheFormatVersion == CurrentCacheFormatVersion;
         if (settings != null && !isCompatibleCache)
         {
             Logger.Instance.Info($"Discarding file index cache format v{settings.CacheFormatVersion:N0}; expected v{CurrentCacheFormatVersion:N0}.");
         }
 
-        m_cachedFiles = PrepareIndexedFiles(cachedFiles ?? (isCompatibleCache ? settings?.CachedFiles : null));
-        m_lastRefreshUtc = isCompatibleCache ? settings?.LastFileRefreshUtc ?? DateTime.MinValue : DateTime.MinValue;
+        m_cachedFiles = PrepareIndexedFiles(cachedFiles ?? (isCompatibleCache ? settings.CachedFiles : null));
+        m_lastRefreshUtc = isCompatibleCache ? settings.LastFileRefreshUtc : DateTime.MinValue;
     }
 
     internal FileSearchService(
         IEnumerable<DirectoryInfo> searchRoots,
         IEnumerable<IndexedFile> cachedFiles,
-        DateTime? lastRefreshUtc = null)
+        DateTime? lastRefreshUtc = null,
+        Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> discoverFilesOverride = null)
     {
         m_settings = null;
-        m_searchRoots = searchRoots?.ToArray() ?? [];
+        m_discoverFilesOverride = discoverFilesOverride;
+        m_searchRoots = searchRoots?.ToList() ?? [];
+        m_hasExplicitSearchRoots = m_searchRoots.Count > 0;
         m_cachedFiles = PrepareIndexedFiles(cachedFiles);
         m_lastRefreshUtc = lastRefreshUtc ?? DateTime.MinValue;
     }
@@ -102,6 +112,10 @@ internal sealed class FileSearchService
         return RankMatches(query, m_cachedFiles);
     }
 
+    internal bool IsRefreshing => m_isRefreshing;
+
+    internal event EventHandler RefreshStateChanged;
+
     public Task WarmAsync(CancellationToken cancellationToken = default)
     {
         if (m_cachedFiles.Count > 0 && DateTime.UtcNow - m_lastRefreshUtc <= RefreshInterval)
@@ -110,23 +124,55 @@ internal sealed class FileSearchService
         return RefreshAsync(cancellationToken);
     }
 
-    internal async Task RefreshAsync(CancellationToken cancellationToken)
+    internal async Task<FileSearchRootAddStatus> AddSearchRootAsync(DirectoryInfo directory, CancellationToken cancellationToken = default)
     {
+        if (directory == null)
+            throw new ArgumentNullException(nameof(directory));
+
         await m_refreshLock.WaitAsync(cancellationToken);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var stopwatch = Stopwatch.StartNew();
-            Logger.Instance.Info($"Refreshing file index across {m_searchRoots.Count} root(s).");
+            if (!directory.Exists)
+                return FileSearchRootAddStatus.Unavailable;
 
-            var snapshot = await Task.Run(() => DiscoverFiles(cancellationToken), cancellationToken);
-            m_cachedFiles = snapshot.Files.ToList();
-            m_lastRefreshUtc = DateTime.UtcNow;
-            SaveIfPersistent();
+            if (IsCoveredByExistingRoot(directory, m_searchRoots))
+                return FileSearchRootAddStatus.AlreadyCovered;
 
-            Logger.Instance.Info(
-                $"File index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Indexed {snapshot.Files.Count:N0} items from {snapshot.ScannedDirectoryCount:N0} directories and skipped {snapshot.SkippedDirectoryCount:N0} excluded directories.");
+            m_hasExplicitSearchRoots = true;
+            m_searchRoots.Add(directory);
+            ReplaceSearchRoots(ConsolidateRoots(m_searchRoots));
+
+            await RefreshCoreAsync(cancellationToken);
+            return FileSearchRootAddStatus.Added;
+        }
+        finally
+        {
+            m_refreshLock.Release();
+        }
+    }
+
+    internal Task RefreshNowAsync(CancellationToken cancellationToken = default) =>
+        RefreshAsync(cancellationToken, forceRefresh: true);
+
+    private async Task RefreshAsync(CancellationToken cancellationToken, bool forceRefresh = false)
+    {
+        await m_refreshLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (!forceRefresh && !NeedsRefresh())
+                return;
+
+            SetIsRefreshing(true);
+            try
+            {
+                await RefreshCoreAsync(cancellationToken);
+            }
+            finally
+            {
+                SetIsRefreshing(false);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -149,16 +195,11 @@ internal sealed class FileSearchService
         if (m_settings == null)
             return;
 
+        m_settings.SearchRoots = m_hasExplicitSearchRoots ? m_searchRoots.ToList() : [];
         m_settings.CachedFiles = m_cachedFiles.ToList();
         m_settings.LastFileRefreshUtc = m_lastRefreshUtc;
         m_settings.CacheFormatVersion = CurrentCacheFormatVersion;
         m_settings.Save();
-    }
-
-    private static IReadOnlyList<DirectoryInfo> GetConfiguredOrDefaultRoots(FileSearchSettings settings)
-    {
-        var configuredRoots = settings?.SearchRoots?.Where(root => root != null).ToArray();
-        return configuredRoots is { Length: > 0 } ? configuredRoots : GetDefaultSearchRoots(OperatingSystem.IsWindows());
     }
 
     internal static IReadOnlyList<DirectoryInfo> GetDefaultSearchRoots(
@@ -166,10 +207,13 @@ internal sealed class FileSearchService
         Func<Environment.SpecialFolder, string> folderPathAccessor = null)
     {
         folderPathAccessor ??= Environment.GetFolderPath;
+        var homePath = folderPathAccessor(Environment.SpecialFolder.UserProfile);
 
         var roots = new[]
         {
             folderPathAccessor(Environment.SpecialFolder.MyDocuments),
+            folderPathAccessor(Environment.SpecialFolder.MyPictures),
+            string.IsNullOrWhiteSpace(homePath) ? null : Path.Combine(homePath, "Downloads"),
             isWindows ? folderPathAccessor(Environment.SpecialFolder.CommonDocuments) : null
         }
             .Where(path => !string.IsNullOrWhiteSpace(path))
@@ -181,6 +225,12 @@ internal sealed class FileSearchService
 
     private FileDiscoverySnapshot DiscoverFiles(CancellationToken cancellationToken)
     {
+        if (m_discoverFilesOverride != null)
+        {
+            var overrideResult = m_discoverFilesOverride(cancellationToken);
+            return new FileDiscoverySnapshot(overrideResult.Files, overrideResult.ScannedDirectoryCount, overrideResult.SkippedDirectoryCount);
+        }
+
         var discoveredFiles = new List<IndexedFile>();
         var scannedDirectoryCount = 0;
         var skippedDirectoryCount = 0;
@@ -262,6 +312,79 @@ internal sealed class FileSearchService
     {
         return attributes.HasFlag(FileAttributes.Hidden) ||
                attributes.HasFlag(FileAttributes.ReparsePoint);
+    }
+
+    private async Task RefreshCoreAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var stopwatch = Stopwatch.StartNew();
+        Logger.Instance.Info($"Refreshing file index across {m_searchRoots.Count} root(s).");
+
+        var snapshot = await Task.Run(() => DiscoverFiles(cancellationToken), cancellationToken);
+        m_cachedFiles = snapshot.Files.ToList();
+        m_lastRefreshUtc = DateTime.UtcNow;
+        SaveIfPersistent();
+
+        Logger.Instance.Info(
+            $"File index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Indexed {snapshot.Files.Count:N0} items from {snapshot.ScannedDirectoryCount:N0} directories and skipped {snapshot.SkippedDirectoryCount:N0} excluded directories.");
+    }
+
+    private bool NeedsRefresh()
+    {
+        return m_lastRefreshUtc == DateTime.MinValue || DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval;
+    }
+
+    private void SetIsRefreshing(bool isRefreshing)
+    {
+        if (m_isRefreshing == isRefreshing)
+            return;
+
+        m_isRefreshing = isRefreshing;
+        RefreshStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ReplaceSearchRoots(IEnumerable<DirectoryInfo> directories)
+    {
+        m_searchRoots.Clear();
+        m_searchRoots.AddRange(directories.Where(directory => directory != null));
+    }
+
+    private static IReadOnlyList<DirectoryInfo> ConsolidateRoots(IEnumerable<DirectoryInfo> roots)
+    {
+        var consolidatedRoots = new List<DirectoryInfo>();
+        foreach (var root in roots
+                     .Where(directory => directory != null)
+                     .OrderBy(directory => NormalizeRootPath(directory.FullName).Length))
+        {
+            if (IsCoveredByExistingRoot(root, consolidatedRoots))
+                continue;
+
+            consolidatedRoots.RemoveAll(existingRoot => IsPathCoveredByRoot(existingRoot.FullName, root.FullName));
+            consolidatedRoots.Add(root);
+        }
+
+        return consolidatedRoots;
+    }
+
+    private static bool IsCoveredByExistingRoot(DirectoryInfo candidateRoot, IEnumerable<DirectoryInfo> existingRoots)
+    {
+        return existingRoots.Any(existingRoot => IsPathCoveredByRoot(candidateRoot.FullName, existingRoot.FullName));
+    }
+
+    private static bool IsPathCoveredByRoot(string candidatePath, string rootPath)
+    {
+        var normalizedCandidatePath = NormalizeRootPath(candidatePath);
+        var normalizedRootPath = NormalizeRootPath(rootPath);
+
+        return normalizedCandidatePath.Equals(normalizedRootPath, StringComparison.OrdinalIgnoreCase) ||
+               normalizedCandidatePath.StartsWith($"{normalizedRootPath}{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeRootPath(string path)
+    {
+        return Path.GetFullPath(path ?? string.Empty)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     private static FileSearchResult RankMatches(string query, IEnumerable<IndexedFile> files)
@@ -369,7 +492,7 @@ internal sealed class FileSearchService
             (text ?? string.Empty)
                 .Trim()
                 .ToLowerInvariant()
-                .Where(character => char.IsLetterOrDigit(character) || char.IsWhiteSpace(character))
+                .Where(character => char.IsLetterOrDigit(character) || char.IsWhiteSpace(character) || character == '.')
                 .ToArray());
     }
 

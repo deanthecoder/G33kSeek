@@ -275,14 +275,14 @@ public sealed class DefaultQueryProvider : IQueryProvider
     {
         if (applicationCount > 0 && totalFileCount > 0)
             return totalFileCount == visibleFileCount
-                ? $"Found {applicationCount} app{(applicationCount == 1 ? string.Empty : "s")} and {totalFileCount} item{(totalFileCount == 1 ? string.Empty : "s")}."
-                : $"Found {applicationCount} app{(applicationCount == 1 ? string.Empty : "s")} and showing {visibleFileCount} of {totalFileCount} items.";
+                ? $"Found {applicationCount:N0} app{(applicationCount == 1 ? string.Empty : "s")} and {totalFileCount:N0} item{(totalFileCount == 1 ? string.Empty : "s")}."
+                : $"Found {applicationCount:N0} app{(applicationCount == 1 ? string.Empty : "s")} and showing {visibleFileCount:N0} of {totalFileCount:N0} items.";
 
         if (applicationCount > 0)
-            return $"Found {applicationCount} app{(applicationCount == 1 ? string.Empty : "s")}.";
+            return $"Found {applicationCount:N0} app{(applicationCount == 1 ? string.Empty : "s")}.";
 
         return totalFileCount == visibleFileCount
-            ? $"Found {totalFileCount} item{(totalFileCount == 1 ? string.Empty : "s")}."
-            : $"Showing {visibleFileCount} of {totalFileCount} items.";
+            ? $"Found {totalFileCount:N0} item{(totalFileCount == 1 ? string.Empty : "s")}."
+            : $"Showing {visibleFileCount:N0} of {totalFileCount:N0} items.";
     }
 }

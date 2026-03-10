@@ -172,9 +172,11 @@ public sealed class CommandQueryProvider : IQueryProvider
     private IReadOnlyList<CommandDefinition> GetCommands()
     {
         var commands = CreateFolderCommands().ToList();
+        commands.Add(new CommandDefinition("addfolder", "Select a folder to include in file search.", CreateAddFolderResult));
         commands.Add(new CommandDefinition("guid", "Generate a dashed GUID.", CreateGuidResult));
         commands.Add(new CommandDefinition("ip", "Show local IPv4 addresses.", CreateIpResult));
         commands.Add(new CommandDefinition("log", "Open the launcher log file.", CreateLogResult));
+        commands.Add(new CommandDefinition("refresh", "Refresh the app and file indexes now.", CreateRefreshResult));
 
         if (m_isMacOS)
         {
@@ -192,6 +194,29 @@ public sealed class CommandQueryProvider : IQueryProvider
         }
 
         return commands;
+    }
+
+    private static QueryResult CreateAddFolderResult()
+    {
+        return new QueryResult(
+            "addfolder",
+            "Select a folder to include in file search.",
+            "Command",
+            new QueryActionDescriptor(
+                QueryActionKind.AddSearchRoot,
+                successMessage: "Search folder updated."));
+    }
+
+    private static QueryResult CreateRefreshResult()
+    {
+        return new QueryResult(
+            "refresh",
+            "Refresh the app and file indexes now.",
+            "Command",
+            new QueryActionDescriptor(
+                QueryActionKind.RefreshIndexes,
+                successMessage: "Refreshing app and file indexes.",
+                shouldHideLauncher: false));
     }
 
     private static void AddFolderCommand(List<CommandDefinition> commands, string name, string description, DirectoryInfo directory)

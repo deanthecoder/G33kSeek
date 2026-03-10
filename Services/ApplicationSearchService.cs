@@ -37,10 +37,12 @@ internal sealed class ApplicationSearchService
     private readonly bool m_isMacOS;
     private readonly bool m_isWindows;
     private readonly Func<IReadOnlyList<WindowsStartApp>> m_windowsStartAppsAccessor;
+    private readonly Func<IReadOnlyList<IndexedApplication>> m_discoverApplicationsOverride;
     private readonly IReadOnlyList<DirectoryInfo> m_macApplicationRoots;
     private readonly IReadOnlyList<DirectoryInfo> m_windowsApplicationRoots;
     private List<IndexedApplication> m_cachedApplications;
     private DateTime m_lastRefreshUtc;
+    private bool m_isRefreshing;
 
     public ApplicationSearchService()
         : this(new ApplicationSearchSettings(), null, null, OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), null)
@@ -53,12 +55,14 @@ internal sealed class ApplicationSearchService
         IEnumerable<DirectoryInfo> windowsApplicationRoots,
         bool isMacOS,
         bool isWindows,
-        Func<IReadOnlyList<WindowsStartApp>> windowsStartAppsAccessor)
+        Func<IReadOnlyList<WindowsStartApp>> windowsStartAppsAccessor,
+        Func<IReadOnlyList<IndexedApplication>> discoverApplicationsOverride = null)
     {
         m_settings = settings;
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
         m_windowsStartAppsAccessor = windowsStartAppsAccessor ?? GetWindowsStartApps;
+        m_discoverApplicationsOverride = discoverApplicationsOverride;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ??
                                 GetConfiguredOrDefaultMacRoots(settings);
         m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ??
@@ -74,12 +78,14 @@ internal sealed class ApplicationSearchService
         bool isMacOS,
         bool isWindows,
         DateTime? lastRefreshUtc = null,
-        Func<IReadOnlyList<WindowsStartApp>> windowsStartAppsAccessor = null)
+        Func<IReadOnlyList<WindowsStartApp>> windowsStartAppsAccessor = null,
+        Func<IReadOnlyList<IndexedApplication>> discoverApplicationsOverride = null)
     {
         m_settings = null;
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
         m_windowsStartAppsAccessor = windowsStartAppsAccessor ?? GetWindowsStartApps;
+        m_discoverApplicationsOverride = discoverApplicationsOverride;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ?? [];
         m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ?? [];
         m_cachedApplications = cachedApplications?.ToList() ?? [];
@@ -104,6 +110,10 @@ internal sealed class ApplicationSearchService
         return RankMatches(query, m_cachedApplications);
     }
 
+    internal bool IsRefreshing => m_isRefreshing;
+
+    internal event EventHandler RefreshStateChanged;
+
     public Task WarmAsync(CancellationToken cancellationToken = default)
     {
         if (!IsSupportedPlatform())
@@ -115,7 +125,10 @@ internal sealed class ApplicationSearchService
         return RefreshAsync(cancellationToken);
     }
 
-    internal async Task RefreshAsync(CancellationToken cancellationToken)
+    internal Task RefreshNowAsync(CancellationToken cancellationToken = default) =>
+        RefreshAsync(cancellationToken, forceRefresh: true);
+
+    internal async Task RefreshAsync(CancellationToken cancellationToken, bool forceRefresh = false)
     {
         if (!IsSupportedPlatform())
             return;
@@ -123,14 +136,25 @@ internal sealed class ApplicationSearchService
         await m_refreshLock.WaitAsync(cancellationToken);
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var stopwatch = Stopwatch.StartNew();
-            Logger.Instance.Info($"Refreshing application index across {(m_isMacOS ? m_macApplicationRoots.Count : m_windowsApplicationRoots.Count)} root(s).");
-            var discoveredApplications = await Task.Run(DiscoverApplications, cancellationToken);
-            m_cachedApplications = discoveredApplications.ToList();
-            m_lastRefreshUtc = DateTime.UtcNow;
-            SaveIfPersistent();
-            Logger.Instance.Info($"Application index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Indexed {m_cachedApplications.Count:N0} applications.");
+            if (!forceRefresh && !NeedsRefresh())
+                return;
+
+            SetIsRefreshing(true);
+            try
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var stopwatch = Stopwatch.StartNew();
+                Logger.Instance.Info($"Refreshing application index across {(m_isMacOS ? m_macApplicationRoots.Count : m_windowsApplicationRoots.Count)} root(s).");
+                var discoveredApplications = await Task.Run(DiscoverApplications, cancellationToken);
+                m_cachedApplications = discoveredApplications.ToList();
+                m_lastRefreshUtc = DateTime.UtcNow;
+                SaveIfPersistent();
+                Logger.Instance.Info($"Application index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Indexed {m_cachedApplications.Count:N0} applications.");
+            }
+            finally
+            {
+                SetIsRefreshing(false);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -197,6 +221,9 @@ internal sealed class ApplicationSearchService
 
     private IReadOnlyList<IndexedApplication> DiscoverApplications()
     {
+        if (m_discoverApplicationsOverride != null)
+            return m_discoverApplicationsOverride();
+
         if (m_isMacOS)
             return DiscoverMacApplications();
 
@@ -204,6 +231,20 @@ internal sealed class ApplicationSearchService
             return DiscoverWindowsApplications();
 
         return [];
+    }
+
+    private bool NeedsRefresh()
+    {
+        return m_lastRefreshUtc == DateTime.MinValue || DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval;
+    }
+
+    private void SetIsRefreshing(bool isRefreshing)
+    {
+        if (m_isRefreshing == isRefreshing)
+            return;
+
+        m_isRefreshing = isRefreshing;
+        RefreshStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private IReadOnlyList<IndexedApplication> DiscoverMacApplications()

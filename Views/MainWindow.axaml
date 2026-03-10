@@ -16,8 +16,6 @@
         BorderBrush="Transparent"
         BorderThickness="0"
         CanResize="False"
-        ExtendClientAreaToDecorationsHint="True"
-        ExtendClientAreaChromeHints="NoChrome"
         Icon="/Assets/app.ico"
         Padding="0"
         ShowInTaskbar="False"
@@ -34,7 +32,7 @@
   <Border Classes="launcherShell"
           Background="#E0000000"
           ClipToBounds="True"
-          Margin="18"
+          Margin="0"
           Padding="0"
           VerticalAlignment="Top">
     <Grid>
@@ -49,15 +47,28 @@
 
       <Grid Margin="18"
             RowDefinitions="Auto,Auto,Auto">
-        <StackPanel Margin="0,0,0,14"
-                    Spacing="6">
-          <TextBlock Classes="launcherEyebrow"
-                     Text="KEYBOARD LAUNCHER" />
-          <TextBlock Classes="launcherTitle"
-                     Text="G33kSeek" />
-          <TextBlock Classes="launcherHint"
-                     Text="{Binding StatusText}" />
-        </StackPanel>
+        <Grid Margin="0,0,0,14"
+              ColumnDefinitions="*,Auto">
+          <StackPanel Spacing="6">
+            <TextBlock Classes="launcherEyebrow"
+                       Text="KEYBOARD LAUNCHER" />
+            <TextBlock Classes="launcherTitle"
+                       Text="G33kSeek" />
+            <TextBlock Classes="launcherHint"
+                       Text="{Binding StatusText}" />
+          </StackPanel>
+
+          <ProgressBar Grid.Column="1"
+                       Width="52"
+                       Height="4"
+                       Margin="12,2,0,0"
+                       VerticalAlignment="Top"
+                       IsIndeterminate="True"
+                       IsVisible="{Binding IsRefreshActive}"
+                       Foreground="#E6F5F5F5"
+                       Background="#33FFFFFF"
+                       ShowProgressText="False" />
+        </Grid>
 
         <Border Grid.Row="1"
                 Classes="searchSurface">
@@ -87,14 +98,14 @@
           <ListBox x:Name="ResultsListBox"
                    Background="Transparent"
                    BorderThickness="0"
+                   DoubleTapped="OnResultsListBoxDoubleTappedAsync"
                    ItemsSource="{Binding Results}"
                    ScrollViewer.VerticalScrollBarVisibility="Auto"
                    SelectedItem="{Binding SelectedResult, Mode=TwoWay}">
             <ListBox.ItemTemplate>
               <DataTemplate>
                 <Grid ColumnDefinitions="*,Auto"
-                      Margin="2"
-                      Tapped="OnResultTappedAsync">
+                      Margin="2">
                   <StackPanel Spacing="2">
                     <TextBlock FontSize="16"
                                FontWeight="SemiBold"

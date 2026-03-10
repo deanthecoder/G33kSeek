@@ -7,22 +7,11 @@
 // about your modifications. Your contributions are valued!
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
+namespace G33kSeek.Services;
 
-namespace G33kSeek.Models;
-
-/// <summary>
-/// Describes the default action to perform when a query result is executed.
-/// </summary>
-/// <remarks>
-/// Different providers can return either a copy-style result, an opener result, or a no-op informational row.
-/// </remarks>
-public enum QueryActionKind
+internal enum FileSearchRootAddStatus
 {
-    None,
-    CopyText,
-    OpenPath,
-    OpenUri,
-    RunProcess,
-    AddSearchRoot,
-    RefreshIndexes
+    Added,
+    AlreadyCovered,
+    Unavailable
 }

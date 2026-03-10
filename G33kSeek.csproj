@@ -8,7 +8,7 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <AssemblyName>G33kSeek</AssemblyName>
     <RootNamespace>G33kSeek</RootNamespace>
-    <DefaultItemExcludes>$(DefaultItemExcludes);DTC.Core\**;Installer\**;G33kSeek.Tests\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.idea\**;artifacts\**;DTC.Core\**;Installer\**;G33kSeek.Tests\**</DefaultItemExcludes>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <Version>1.0</Version>
@@ -44,8 +44,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove=".idea\**\*.cs" />
     <Compile Remove="DTC.Core\**\*.cs" />
     <Compile Remove="G33kSeek.Tests\**\*.cs" />
+    <Compile Remove="artifacts\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -19,19 +19,47 @@ public class FileSearchServiceTests
     [Test]
     public void GetDefaultSearchRootsIncludesCommonDocumentsOnWindows()
     {
+        var userProfilePath = CreateRootedPath("Users", "Dean");
+        var publicDocumentsPath = CreateRootedPath("Users", "Public", "Documents");
         var roots = FileSearchService.GetDefaultSearchRoots(
             isWindows: true,
             folderPathAccessor: specialFolder => specialFolder switch
             {
-                Environment.SpecialFolder.MyDocuments => "/Users/Dean/Documents",
-                Environment.SpecialFolder.CommonDocuments => "/Users/Public/Documents",
+                Environment.SpecialFolder.MyDocuments => Path.Combine(userProfilePath, "Documents"),
+                Environment.SpecialFolder.MyPictures => Path.Combine(userProfilePath, "Pictures"),
+                Environment.SpecialFolder.UserProfile => userProfilePath,
+                Environment.SpecialFolder.CommonDocuments => publicDocumentsPath,
                 _ => string.Empty
             });
 
         Assert.That(roots.Select(root => root.FullName), Is.EqualTo(new[]
         {
-            "/Users/Dean/Documents",
-            "/Users/Public/Documents"
+            Path.Combine(userProfilePath, "Documents"),
+            Path.Combine(userProfilePath, "Pictures"),
+            Path.Combine(userProfilePath, "Downloads"),
+            publicDocumentsPath
+        }));
+    }
+
+    [Test]
+    public void GetDefaultSearchRootsIncludesPicturesAndDownloadsCrossPlatform()
+    {
+        var userProfilePath = CreateRootedPath("Users", "Dean");
+        var roots = FileSearchService.GetDefaultSearchRoots(
+            isWindows: false,
+            folderPathAccessor: specialFolder => specialFolder switch
+            {
+                Environment.SpecialFolder.MyDocuments => Path.Combine(userProfilePath, "Documents"),
+                Environment.SpecialFolder.MyPictures => Path.Combine(userProfilePath, "Pictures"),
+                Environment.SpecialFolder.UserProfile => userProfilePath,
+                _ => string.Empty
+            });
+
+        Assert.That(roots.Select(root => root.FullName), Is.EqualTo(new[]
+        {
+            Path.Combine(userProfilePath, "Documents"),
+            Path.Combine(userProfilePath, "Pictures"),
+            Path.Combine(userProfilePath, "Downloads")
         }));
     }
 
@@ -168,5 +196,98 @@ public class FileSearchServiceTests
 
         var topFileResult = results.VisibleFiles.First(result => !result.IsDirectory);
         Assert.That(topFileResult.Subtitle, Is.EqualTo(nearerDirectory.FullName));
+    }
+
+    [Test]
+    public async Task SearchAsyncTreatsPeriodsAsMeaningfulInFileQueries()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        documentsDirectory.GetDir("JetBrains").Create();
+        documentsDirectory.GetFile("brains.mm").WriteAllText("content");
+        var service = new FileSearchService([documentsDirectory], [], DateTime.MinValue);
+
+        var results = await service.SearchAsync("brains.", CancellationToken.None);
+
+        Assert.That(results.TotalMatchCount, Is.EqualTo(1));
+        Assert.That(results.VisibleFiles.Single().DisplayName, Is.EqualTo("brains.mm"));
+    }
+
+    [Test]
+    public async Task AddSearchRootAsyncAddsFilesFromNewRoot()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        var extraDirectory = tempDirectory.GetDir("Extra");
+        extraDirectory.Create();
+        extraDirectory.GetFile("image.png").WriteAllText("content");
+        var service = new FileSearchService([documentsDirectory], [], DateTime.MinValue);
+
+        var addStatus = await service.AddSearchRootAsync(extraDirectory, CancellationToken.None);
+        var results = await service.SearchAsync("image", CancellationToken.None);
+
+        Assert.That(addStatus, Is.EqualTo(FileSearchRootAddStatus.Added));
+        Assert.That(results.VisibleFiles.Any(result => result.DisplayName == "image.png"), Is.True);
+    }
+
+    [Test]
+    public async Task AddSearchRootAsyncIgnoresRootsCoveredByExistingSearchLocations()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        var nestedDirectory = documentsDirectory.GetDir("Nested");
+        nestedDirectory.Create();
+        var service = new FileSearchService([documentsDirectory], [], DateTime.MinValue);
+
+        var addStatus = await service.AddSearchRootAsync(nestedDirectory, CancellationToken.None);
+
+        Assert.That(addStatus, Is.EqualTo(FileSearchRootAddStatus.AlreadyCovered));
+    }
+
+    [Test]
+    public async Task AddSearchRootAsyncRemovesNowCoveredChildRoots()
+    {
+        using var tempDirectory = new TempDirectory();
+        var parentDirectory = tempDirectory.GetDir("Parent");
+        var childDirectory = parentDirectory.GetDir("Child");
+        childDirectory.Create();
+        childDirectory.GetFile("image.png").WriteAllText("content");
+        var service = new FileSearchService([childDirectory], [], DateTime.MinValue);
+
+        var addStatus = await service.AddSearchRootAsync(parentDirectory, CancellationToken.None);
+        var results = await service.SearchAsync("image", CancellationToken.None);
+
+        Assert.That(addStatus, Is.EqualTo(FileSearchRootAddStatus.Added));
+        Assert.That(results.TotalMatchCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task WarmAsyncDoesNotRefreshTwiceWhenConcurrentRequestsOverlap()
+    {
+        var refreshCount = 0;
+        var service = new FileSearchService(
+            [],
+            [],
+            DateTime.MinValue,
+            _ =>
+            {
+                refreshCount++;
+                Thread.Sleep(150);
+                return ([], 0, 0);
+            });
+
+        var firstWarmTask = service.WarmAsync();
+        await Task.Delay(20);
+        await Task.WhenAll(firstWarmTask, service.WarmAsync());
+
+        Assert.That(refreshCount, Is.EqualTo(1));
+    }
+
+    private static string CreateRootedPath(params string[] segments)
+    {
+        var root = Path.GetPathRoot(Environment.CurrentDirectory) ?? Path.DirectorySeparatorChar.ToString();
+        return Path.Combine([root, .. segments]);
     }
 }

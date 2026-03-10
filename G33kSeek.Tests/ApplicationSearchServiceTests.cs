@@ -139,4 +139,38 @@ public class ApplicationSearchServiceTests
 
         Assert.That(results, Is.Empty);
     }
+
+    [Test]
+    public async Task WarmAsyncDoesNotRefreshTwiceWhenConcurrentRequestsOverlap()
+    {
+        var refreshCount = 0;
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [],
+            isMacOS: false,
+            isWindows: true,
+            lastRefreshUtc: null,
+            windowsStartAppsAccessor: () => [],
+            discoverApplicationsOverride: () =>
+            {
+                refreshCount++;
+                Thread.Sleep(150);
+                return
+                [
+                    new IndexedApplication
+                    {
+                        DisplayName = "Rider",
+                        SearchName = "rider",
+                        ShortcutFile = new FileInfo(@"C:\Apps\Rider.lnk")
+                    }
+                ];
+            });
+
+        var firstWarmTask = service.WarmAsync();
+        await Task.Delay(20);
+        await Task.WhenAll(firstWarmTask, service.WarmAsync());
+
+        Assert.That(refreshCount, Is.EqualTo(1));
+    }
 }

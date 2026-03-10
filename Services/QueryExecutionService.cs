@@ -14,6 +14,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using DTC.Core.UI;
 using DTC.Core.Extensions;
 using G33kSeek.Models;
 
@@ -27,6 +28,14 @@ namespace G33kSeek.Services;
 /// </remarks>
 public sealed class QueryExecutionService
 {
+    internal static Action<FileInfo> FileOpener { get; set; } = file => file.OpenWithDefaultViewer();
+    internal static Action<DirectoryInfo> DirectoryOpener { get; set; } = directory => directory.Explore();
+    internal static Action<Uri> UriOpener { get; set; } = uri => uri.Open();
+    internal static Action<ProcessStartInfo> ProcessStarter { get; set; } = processStartInfo => Process.Start(processStartInfo);
+    internal static Func<CancellationToken, Task<DirectoryInfo>> SearchRootPicker { get; set; } = PickSearchRootAsync;
+    internal static Func<DirectoryInfo, CancellationToken, Task<FileSearchRootAddStatus>> SearchRootAdder { get; set; }
+    internal static Func<CancellationToken, Task> IndexRefresher { get; set; }
+
     public static async Task<QueryExecutionResult> ExecuteAsync(
         QueryResult result,
         Window ownerWindow,
@@ -34,8 +43,6 @@ public sealed class QueryExecutionService
     {
         if (result == null)
             throw new ArgumentNullException(nameof(result));
-        if (ownerWindow == null)
-            throw new ArgumentNullException(nameof(ownerWindow));
 
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -46,6 +53,9 @@ public sealed class QueryExecutionService
         switch (action.Kind)
         {
             case QueryActionKind.CopyText:
+                if (ownerWindow == null)
+                    throw new ArgumentNullException(nameof(ownerWindow));
+
                 var clipboard = TopLevel.GetTopLevel(ownerWindow)?.Clipboard;
                 if (clipboard == null)
                     return new QueryExecutionResult(false, "Clipboard is not currently available.");
@@ -56,13 +66,13 @@ public sealed class QueryExecutionService
             case QueryActionKind.OpenPath:
                 if (File.Exists(action.Payload))
                 {
-                    new FileInfo(action.Payload).OpenWithDefaultViewer();
+                    FileOpener(new FileInfo(action.Payload));
                     return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
                 }
 
                 if (Directory.Exists(action.Payload))
                 {
-                    Process.Start(new ProcessStartInfo(action.Payload) { UseShellExecute = true });
+                    DirectoryOpener(new DirectoryInfo(action.Payload));
                     return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
                 }
 
@@ -71,7 +81,7 @@ public sealed class QueryExecutionService
             case QueryActionKind.OpenUri:
                 if (Uri.TryCreate(action.Payload, UriKind.Absolute, out var uri))
                 {
-                    uri.Open();
+                    UriOpener(uri);
                     return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
                 }
 
@@ -81,15 +91,62 @@ public sealed class QueryExecutionService
                 if (string.IsNullOrWhiteSpace(action.Payload))
                     return new QueryExecutionResult(false, "The target command was invalid.");
 
-                Process.Start(
+                ProcessStarter(
                     new ProcessStartInfo(action.Payload, action.Arguments ?? string.Empty)
                     {
                         UseShellExecute = false
                     });
                 return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
 
+            case QueryActionKind.AddSearchRoot:
+                if (SearchRootPicker == null || SearchRootAdder == null)
+                    return new QueryExecutionResult(false, "Adding search folders is not available.");
+
+                var selectedDirectory = await SearchRootPicker(cancellationToken);
+                if (selectedDirectory == null)
+                    return new QueryExecutionResult(false, "Folder selection cancelled.");
+
+                var addStatus = await SearchRootAdder(selectedDirectory, cancellationToken);
+                return addStatus switch
+                {
+                    FileSearchRootAddStatus.Added => new QueryExecutionResult(true, $"Added {selectedDirectory.FullName} to file search.", action.ShouldHideLauncher),
+                    FileSearchRootAddStatus.AlreadyCovered => new QueryExecutionResult(true, $"{selectedDirectory.FullName} is already covered by file search.", action.ShouldHideLauncher),
+                    FileSearchRootAddStatus.Unavailable => new QueryExecutionResult(false, $"{selectedDirectory.FullName} is no longer available."),
+                    _ => new QueryExecutionResult(false, "Unable to add that folder to file search.")
+                };
+
+            case QueryActionKind.RefreshIndexes:
+                if (IndexRefresher == null)
+                    return new QueryExecutionResult(false, "Refreshing indexes is not available.");
+
+                _ = RefreshIndexesInBackgroundAsync();
+                return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
+
             default:
                 return new QueryExecutionResult(false, "That action type is not implemented yet.");
         }
+    }
+
+    private static async Task RefreshIndexesInBackgroundAsync()
+    {
+        try
+        {
+            await IndexRefresher(CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected if the operation is canceled.
+        }
+        catch (Exception ex)
+        {
+            DTC.Core.Logger.Instance.Exception("Manual index refresh failed.", ex);
+        }
+    }
+
+    private static async Task<DirectoryInfo> PickSearchRootAsync(CancellationToken cancellationToken)
+    {
+        var directory = await DialogService.Instance.SelectFolderAsync("Select folder to include in file search");
+        cancellationToken.ThrowIfCancellationRequested();
+        return directory?.Exists == true ? directory : null;
     }
 }
