@@ -23,6 +23,8 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class ApplicationSearchSettings : UserSettingsBase
 {
+    protected override string SettingsFileName => "application-search-settings.json";
+
     public List<DirectoryInfo> MacApplicationRoots
     {
         get => Get<List<DirectoryInfo>>() ?? [];

@@ -10,7 +10,9 @@
 
 using DTC.Core;
 using DTC.Core.Extensions;
+using DTC.Core.JsonConverters;
 using G33kSeek.Models;
+using Newtonsoft.Json;
 
 namespace G33kSeek.Tests;
 
@@ -54,5 +56,32 @@ public class IndexedFileTests
         Assert.That(action.Kind, Is.EqualTo(QueryActionKind.OpenPath));
         Assert.That(action.Payload, Is.EqualTo(directory.FullName));
         Assert.That(indexedFile.IsDirectory, Is.True);
+    }
+
+    [Test]
+    public void SerializationOmitsComputedFileProperties()
+    {
+        var indexedFile = new IndexedFile
+        {
+            DisplayName = "report.txt",
+            SearchText = "report txt",
+            File = new FileInfo(@"C:\Docs\report.txt")
+        };
+
+        var json = JsonConvert.SerializeObject(
+            indexedFile,
+            new JsonSerializerSettings
+            {
+                Converters =
+                [
+                    new FileInfoConverter(),
+                    new DirectoryInfoConverter()
+                ]
+            });
+
+        Assert.That(json, Does.Not.Contain("IsDirectory"));
+        Assert.That(json, Does.Not.Contain("Subtitle"));
+        Assert.That(json, Does.Not.Contain("FullPath"));
+        Assert.That(json, Does.Contain("File"));
     }
 }

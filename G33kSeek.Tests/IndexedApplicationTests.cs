@@ -8,7 +8,9 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using DTC.Core.JsonConverters;
 using G33kSeek.Models;
+using Newtonsoft.Json;
 
 namespace G33kSeek.Tests;
 
@@ -48,5 +50,32 @@ public class IndexedApplicationTests
         Assert.That(action.Payload, Is.EqualTo("explorer.exe"));
         Assert.That(action.Arguments, Is.EqualTo("\"shell:AppsFolder\\Microsoft.CompanyPortal_8wekyb3d8bbwe!App\""));
         Assert.That(application.Subtitle, Is.EqualTo("Microsoft.CompanyPortal_8wekyb3d8bbwe!App"));
+    }
+
+    [Test]
+    public void SerializationOmitsComputedLaunchProperties()
+    {
+        var application = new IndexedApplication
+        {
+            DisplayName = "Rider",
+            SearchName = "rider",
+            LaunchKind = ApplicationLaunchKind.OpenPath,
+            ShortcutFile = new FileInfo(@"C:\Apps\Rider.lnk")
+        };
+
+        var json = JsonConvert.SerializeObject(
+            application,
+            new JsonSerializerSettings
+            {
+                Converters =
+                [
+                    new FileInfoConverter(),
+                    new DirectoryInfoConverter()
+                ]
+            });
+
+        Assert.That(json, Does.Not.Contain("LaunchPath"));
+        Assert.That(json, Does.Not.Contain("Subtitle"));
+        Assert.That(json, Does.Contain("ShortcutFile"));
     }
 }

@@ -28,6 +28,8 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchSettings : UserSettingsBase
 {
+    protected override string SettingsFileName => "file-search-settings.json";
+
     public List<DirectoryInfo> SearchRoots
     {
         get => Get<List<DirectoryInfo>>() ?? [];

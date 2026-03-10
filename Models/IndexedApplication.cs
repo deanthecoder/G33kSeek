@@ -10,6 +10,7 @@
 
 using System;
 using System.IO;
+using Newtonsoft.Json;
 
 namespace G33kSeek.Models;
 
@@ -33,8 +34,10 @@ internal sealed class IndexedApplication
 
     public FileInfo ShortcutFile { get; set; }
 
+    [JsonIgnore]
     public string LaunchPath => BundleDirectory?.FullName ?? ShortcutFile?.FullName ?? string.Empty;
 
+    [JsonIgnore]
     public string Subtitle => ResolveLaunchKind() == ApplicationLaunchKind.WindowsShellApp ? AppUserModelId : LaunchPath;
 
     public QueryActionDescriptor CreatePrimaryAction()

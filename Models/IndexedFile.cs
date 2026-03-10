@@ -10,6 +10,7 @@
 
 using System;
 using System.IO;
+using Newtonsoft.Json;
 
 namespace G33kSeek.Models;
 
@@ -33,10 +34,13 @@ internal sealed class IndexedFile
 
     public DirectoryInfo Directory { get; set; }
 
+    [JsonIgnore]
     public bool IsDirectory => Directory != null;
 
+    [JsonIgnore]
     public string Subtitle => IsDirectory ? Directory?.Parent?.FullName ?? string.Empty : File?.DirectoryName ?? string.Empty;
 
+    [JsonIgnore]
     public string FullPath => IsDirectory ? Directory?.FullName ?? string.Empty : File?.FullName ?? string.Empty;
 
     public string[] PathSegments { get; set; } = [];

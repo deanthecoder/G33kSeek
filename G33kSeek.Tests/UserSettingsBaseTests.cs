@@ -39,9 +39,66 @@ public class UserSettingsBaseTests
         }
     }
 
+    [Test]
+    public void DerivedSettingsCanUseDifferentBackingFiles()
+    {
+        var settingsDirectory = Assembly.GetEntryAssembly().GetAppSettingsPath();
+        var alphaFile = settingsDirectory.GetFile("alpha-settings.json");
+        var betaFile = settingsDirectory.GetFile("beta-settings.json");
+        var originalAlphaContent = alphaFile.Exists() ? alphaFile.ReadAllText() : null;
+        var originalBetaContent = betaFile.Exists() ? betaFile.ReadAllText() : null;
+
+        try
+        {
+            alphaFile.WriteAllText("{\"Value\":1}");
+            betaFile.WriteAllText("{\"Value\":2}");
+
+            using var alphaSettings = new AlphaSettings();
+            using var betaSettings = new BetaSettings();
+
+            Assert.That(alphaSettings.Value, Is.EqualTo(1));
+            Assert.That(betaSettings.Value, Is.EqualTo(2));
+        }
+        finally
+        {
+            RestoreSettingsFile(alphaFile, originalAlphaContent);
+            RestoreSettingsFile(betaFile, originalBetaContent);
+        }
+    }
+
+    private static void RestoreSettingsFile(FileInfo settingsFile, string originalContent)
+    {
+        if (originalContent == null)
+            settingsFile.TryDelete();
+        else
+            settingsFile.WriteAllText(originalContent);
+    }
+
     private sealed class TestSettings : UserSettingsBase
     {
         public int CacheFormatVersion => Get<int>();
+
+        protected override void ApplyDefaults()
+        {
+        }
+    }
+
+    private sealed class AlphaSettings : UserSettingsBase
+    {
+        protected override string SettingsFileName => "alpha-settings.json";
+
+        public int Value => Get<int>();
+
+        protected override void ApplyDefaults()
+        {
+        }
+    }
+
+    private sealed class BetaSettings : UserSettingsBase
+    {
+        protected override string SettingsFileName => "beta-settings.json";
+
+        public int Value => Get<int>();
 
         protected override void ApplyDefaults()
         {
