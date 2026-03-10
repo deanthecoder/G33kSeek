@@ -167,7 +167,7 @@ Agents should prefer **SharpHook** rather than implementing platform‑specific 
 
 Example responsibilities:
 
-- Register a global launcher shortcut (e.g. `Ctrl+Space` or user configurable).
+- Register a global launcher shortcut (currently `Alt+Space` on Windows and `Ctrl+Space` elsewhere, unless later made user configurable).
 - Trigger the launcher window when the shortcut is pressed.
 - Ensure the hook runs off the UI thread where appropriate.
 

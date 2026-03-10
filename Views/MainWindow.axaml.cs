@@ -14,6 +14,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using G33kSeek.Models;
 using G33kSeek.Services;
 using G33kSeek.ViewModels;
@@ -39,6 +40,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = m_viewModel;
         Opened += OnOpened;
+        Activated += OnActivated;
         Deactivated += OnDeactivated;
         AddHandler(KeyDownEvent, OnPreviewKeyDownAsync, RoutingStrategies.Tunnel);
     }
@@ -47,13 +49,18 @@ public partial class MainWindow : Window
     {
         WindowStartupLocation = WindowStartupLocation.Manual;
         Position = GetLauncherPosition();
-        SearchTextBox.Focus();
-        SearchTextBox.SelectAll();
-        SearchTextBox.CaretIndex = SearchTextBox.Text?.Length ?? 0;
+        FocusSearchTextBox();
+        ScheduleFocusRetries();
     }
 
     private void OnOpened(object sender, EventArgs e) =>
         PrepareForActivation();
+
+    private void OnActivated(object sender, EventArgs e)
+    {
+        FocusSearchTextBox();
+        ScheduleFocusRetries();
+    }
 
     private void OnDeactivated(object sender, EventArgs e) =>
         Hide();
@@ -152,5 +159,19 @@ public partial class MainWindow : Window
         }
 
         return null;
+    }
+
+    private void ScheduleFocusRetries()
+    {
+        Dispatcher.UIThread.Post(FocusSearchTextBox, DispatcherPriority.Input);
+        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(40));
+        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(120));
+    }
+
+    private void FocusSearchTextBox()
+    {
+        SearchTextBox.Focus();
+        SearchTextBox.SelectAll();
+        SearchTextBox.CaretIndex = SearchTextBox.Text?.Length ?? 0;
     }
 }

@@ -38,7 +38,7 @@ public sealed class CommandQueryProvider : IQueryProvider
     private readonly bool m_isWindows;
 
     public CommandQueryProvider()
-        : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), () => Guid.NewGuid(), GetLocalIpAddresses, GetCommonFolderTargets, () => Logger.Instance.File)
+        : this(OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), Guid.NewGuid, GetLocalIpAddresses, GetCommonFolderTargets, () => Logger.Instance.File)
     {
     }
 
