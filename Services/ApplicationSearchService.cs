@@ -355,11 +355,19 @@ internal sealed class ApplicationSearchService
 
     private static int Score(string normalizedQuery, string searchName)
     {
+        var acronym = BuildAcronym(searchName);
+
         if (searchName == normalizedQuery)
             return 0;
 
         if (searchName.StartsWith(normalizedQuery, StringComparison.Ordinal))
             return 10;
+
+        if (acronym == normalizedQuery)
+            return 15;
+
+        if (acronym.StartsWith(normalizedQuery, StringComparison.Ordinal))
+            return 18;
 
         if (searchName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Any(word => word.StartsWith(normalizedQuery, StringComparison.Ordinal)))
@@ -369,6 +377,15 @@ internal sealed class ApplicationSearchService
 
         var index = searchName.IndexOf(normalizedQuery, StringComparison.Ordinal);
         return index >= 0 ? 100 + index : int.MaxValue;
+    }
+
+    private static string BuildAcronym(string searchName)
+    {
+        return new string(
+            (searchName ?? string.Empty)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Select(word => word[0])
+                .ToArray());
     }
 
     private static string Normalize(string text)

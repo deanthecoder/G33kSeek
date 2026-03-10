@@ -85,6 +85,54 @@ public class ApplicationSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncMatchesApplicationInitialisms()
+    {
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [
+                new IndexedApplication
+                {
+                    DisplayName = "Smart Print Controller",
+                    SearchName = "smart print controller",
+                    BundleDirectory = new DirectoryInfo("/Applications/Smart Print Controller.app")
+                }
+            ],
+            isMacOS: true,
+            isWindows: false,
+            DateTime.UtcNow);
+
+        var results = await service.SearchAsync("spc", CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Smart Print Controller"));
+    }
+
+    [Test]
+    public async Task SearchAsyncMatchesInitialismPrefixes()
+    {
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [
+                new IndexedApplication
+                {
+                    DisplayName = "Smart Print Controller",
+                    SearchName = "smart print controller",
+                    BundleDirectory = new DirectoryInfo("/Applications/Smart Print Controller.app")
+                }
+            ],
+            isMacOS: true,
+            isWindows: false,
+            DateTime.UtcNow);
+
+        var results = await service.SearchAsync("sp", CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Smart Print Controller"));
+    }
+
+    [Test]
     public async Task SearchAsyncDiscoversWindowsApplicationsFromStartMenuShortcuts()
     {
         using var tempDirectory = new TempDirectory();
