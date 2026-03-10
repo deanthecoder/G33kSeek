@@ -26,7 +26,7 @@ namespace G33kSeek.Services;
 /// <remarks>
 /// This centralizes clipboard and open-item behavior so providers only need to describe what Enter should do.
 /// </remarks>
-public sealed class QueryExecutionService
+public static class QueryExecutionService
 {
     internal static Action<FileInfo> FileOpener { get; set; } = file => file.OpenWithDefaultViewer();
     internal static Action<DirectoryInfo> DirectoryOpener { get; set; } = directory => directory.Explore();
