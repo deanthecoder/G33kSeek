@@ -356,6 +356,18 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncReturnsBinaryConversion()
+    {
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService(), CreateEmptyFileSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest("255 in binary", "255 in binary", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("0b11111111"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.CopyText));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsTemperatureConversion()
     {
         var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService(), CreateEmptyFileSearchService());

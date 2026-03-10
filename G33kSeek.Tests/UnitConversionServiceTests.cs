@@ -51,6 +51,54 @@ public class UnitConversionServiceTests
     }
 
     [Test]
+    public void TryConvertReturnsDecimalToBinaryConversion()
+    {
+        var service = new UnitConversionService();
+
+        var success = service.TryConvert("255 in binary", out var convertedValue, out var description);
+
+        Assert.That(success, Is.True);
+        Assert.That(convertedValue, Is.EqualTo("0b11111111"));
+        Assert.That(description, Is.EqualTo("255 = 0b11111111"));
+    }
+
+    [Test]
+    public void TryConvertReturnsBinaryToDecimalConversion()
+    {
+        var service = new UnitConversionService();
+
+        var success = service.TryConvert("0b11111111 in decimal", out var convertedValue, out var description);
+
+        Assert.That(success, Is.True);
+        Assert.That(convertedValue, Is.EqualTo("255"));
+        Assert.That(description, Is.EqualTo("0b11111111 = 255 decimal"));
+    }
+
+    [Test]
+    public void TryConvertReturnsHexToBinaryConversion()
+    {
+        var service = new UnitConversionService();
+
+        var success = service.TryConvert("0xff in binary", out var convertedValue, out var description);
+
+        Assert.That(success, Is.True);
+        Assert.That(convertedValue, Is.EqualTo("0b11111111"));
+        Assert.That(description, Is.EqualTo("0XFF = 0b11111111"));
+    }
+
+    [Test]
+    public void TryConvertReturnsBinaryToHexConversion()
+    {
+        var service = new UnitConversionService();
+
+        var success = service.TryConvert("binary 11111111 to hex", out var convertedValue, out var description);
+
+        Assert.That(success, Is.True);
+        Assert.That(convertedValue, Is.EqualTo("0xFF"));
+        Assert.That(description, Is.EqualTo("0b11111111 = 0xFF"));
+    }
+
+    [Test]
     public void TryConvertReturnsCelsiusToFahrenheitConversion()
     {
         var service = new UnitConversionService();

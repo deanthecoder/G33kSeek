@@ -46,9 +46,9 @@ The initial desktop shell now exists and includes:
 - no-prefix file search backed by a cached Documents index
 - direct URL opening for `http://`, `https://`, `www.`, and bare domains
 - quick no-prefix utility values like `now`, `date`, and `time`
-- no-prefix unit conversions for data sizes, temperature, weight, length, and hex/decimal
+- no-prefix unit conversions for data sizes, temperature, weight, length, and decimal/hex/binary
 - `?` help, filtered help, and quoted web search via Google
-- `>` commands for common folders, GUID/IP utilities, log viewing, and basic system actions
+- `>` commands for common folders, adding file-search folders, GUID/IP utilities, log viewing, and basic system actions
 
 This is intentionally just the starting point before real providers and indexing are connected.
 
@@ -80,6 +80,7 @@ https://avaloniaui.net
 68kg in stone
 180cm in ft
 255 in hex
+255 in binary
 ?
 ?"avalonia docs"
 ??class Program
@@ -186,13 +187,14 @@ Current no-prefix utility queries also include:
 
 - `now`, `date`, `time`
 - data-size conversion such as `10mb in bytes`
-- hex/decimal conversion such as `255 in hex` or `0xff in decimal`
+- decimal/hex/binary conversion such as `255 in hex`, `255 in binary`, `0xff in binary`, or `0b11111111 in decimal`
 - temperature conversion such as `100c in f`
 - weight conversion such as `68kg in stone`
 - length conversion such as `180cm in ft`
 
 Today the first real `>` commands are:
 
+- `>addfolder`
 - `>desktop`
 - `>documents`
 - `>downloads`
@@ -201,6 +203,7 @@ Today the first real `>` commands are:
 - `>ip`
 - `>lock`
 - `>log`
+- `>refresh`
 - `>shutdown`
 - `>restart`
 - `>logoff`

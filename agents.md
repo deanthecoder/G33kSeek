@@ -13,6 +13,14 @@ The UI is built with **Avalonia** and the codebase is written in **C# (.NET)**.
 
 ---
 
+# Recent Uncommitted Changes
+
+This section is intended to reflect the current working tree, not just the last commit. Update it when substantial in-flight work changes.
+
+- None currently. Update this list when new in-flight work starts.
+
+---
+
 # Agent Instructions (Overview)
 
 - Read this document before proposing architectural changes.

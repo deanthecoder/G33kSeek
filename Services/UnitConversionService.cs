@@ -33,15 +33,19 @@ internal sealed class UnitConversionService
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly Regex PrefixedBaseRegex = new(
-        @"^\s*(?<source>hex|dec|decimal)\s+(?<value>[0-9a-fA-F]+)\s+(?:in|to)\s+(?<target>hex|dec|decimal)\s*$",
+        @"^\s*(?<source>hex|dec|decimal|bin|binary)\s+(?<value>[0-9a-fA-F]+)\s+(?:in|to)\s+(?<target>hex|dec|decimal|bin|binary)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    private static readonly Regex HexToDecimalRegex = new(
-        @"^\s*(?<value>0x[0-9a-fA-F]+)\s+(?:in|to)\s+(?<target>dec|decimal)\s*$",
+    private static readonly Regex HexToBaseRegex = new(
+        @"^\s*(?<value>0x[0-9a-fA-F]+)\s+(?:in|to)\s+(?<target>dec|decimal|bin|binary)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    private static readonly Regex DecimalToHexRegex = new(
-        @"^\s*(?<value>\d+)\s+(?:in|to)\s+(?<target>hex)\s*$",
+    private static readonly Regex BinaryToBaseRegex = new(
+        @"^\s*(?<value>0b[01]+)\s+(?:in|to)\s+(?<target>dec|decimal|hex)\s*$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private static readonly Regex DecimalToBaseRegex = new(
+        @"^\s*(?<value>\d+)\s+(?:in|to)\s+(?<target>hex|bin|binary)\s*$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private static readonly IReadOnlyDictionary<string, (decimal Multiplier, string DisplayName)> DataUnits =
@@ -133,23 +137,42 @@ internal sealed class UnitConversionService
         if (TryConvertPrefixedNumberBase(query, out convertedValue, out description))
             return true;
 
-        var hexToDecimalMatch = HexToDecimalRegex.Match(query);
-        if (hexToDecimalMatch.Success)
+        var hexToBaseMatch = HexToBaseRegex.Match(query);
+        if (hexToBaseMatch.Success)
         {
-            var hexValue = hexToDecimalMatch.Groups["value"].Value;
+            var hexValue = hexToBaseMatch.Groups["value"].Value;
             if (ulong.TryParse(hexValue[2..], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var parsedHex))
             {
-                convertedValue = parsedHex.ToString(CultureInfo.InvariantCulture);
-                description = $"{hexValue.ToUpperInvariant()} = {convertedValue} decimal";
+                var target = NormalizeBaseName(hexToBaseMatch.Groups["target"].Value);
+                convertedValue = FormatBaseValue(target, parsedHex);
+                description = target == "dec"
+                    ? $"{hexValue.ToUpperInvariant()} = {convertedValue} decimal"
+                    : $"{hexValue.ToUpperInvariant()} = {convertedValue}";
                 return true;
             }
         }
 
-        var decimalToHexMatch = DecimalToHexRegex.Match(query);
-        if (decimalToHexMatch.Success &&
-            ulong.TryParse(decimalToHexMatch.Groups["value"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedDecimal))
+        var binaryToBaseMatch = BinaryToBaseRegex.Match(query);
+        if (binaryToBaseMatch.Success)
         {
-            convertedValue = $"0x{parsedDecimal:X}";
+            var binaryValue = binaryToBaseMatch.Groups["value"].Value;
+            if (TryParseBinary(binaryValue[2..], out var parsedBinary))
+            {
+                var target = NormalizeBaseName(binaryToBaseMatch.Groups["target"].Value);
+                convertedValue = FormatBaseValue(target, parsedBinary);
+                description = target == "dec"
+                    ? $"{binaryValue} = {convertedValue} decimal"
+                    : $"{binaryValue} = {convertedValue}";
+                return true;
+            }
+        }
+
+        var decimalToBaseMatch = DecimalToBaseRegex.Match(query);
+        if (decimalToBaseMatch.Success &&
+            ulong.TryParse(decimalToBaseMatch.Groups["value"].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedDecimal))
+        {
+            var target = NormalizeBaseName(decimalToBaseMatch.Groups["target"].Value);
+            convertedValue = FormatBaseValue(target, parsedDecimal);
             description = $"{parsedDecimal.ToString(CultureInfo.InvariantCulture)} = {convertedValue}";
             return true;
         }
@@ -172,33 +195,122 @@ internal sealed class UnitConversionService
         var source = match.Groups["source"].Value.ToLowerInvariant();
         var target = match.Groups["target"].Value.ToLowerInvariant();
         var value = match.Groups["value"].Value;
+        var normalizedSource = NormalizeBaseName(source);
+        var normalizedTarget = NormalizeBaseName(target);
 
-        if (source == target || (source == "dec" && target == "decimal") || (source == "decimal" && target == "dec"))
+        if (normalizedSource == normalizedTarget)
         {
             convertedValue = null;
             description = null;
             return false;
         }
 
-        if ((source == "hex") && (target == "dec" || target == "decimal") &&
-            ulong.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var parsedHex))
+        if (TryParseBaseValue(normalizedSource, value, out var parsedValue))
         {
-            convertedValue = parsedHex.ToString(CultureInfo.InvariantCulture);
-            description = $"0x{value.ToUpperInvariant()} = {convertedValue} decimal";
-            return true;
-        }
-
-        if ((source == "dec" || source == "decimal") && target == "hex" &&
-            ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedDecimal))
-        {
-            convertedValue = $"0x{parsedDecimal:X}";
-            description = $"{parsedDecimal.ToString(CultureInfo.InvariantCulture)} = {convertedValue}";
+            convertedValue = FormatBaseValue(normalizedTarget, parsedValue);
+            var sourceDisplayValue = FormatSourceValue(normalizedSource, value);
+            description = normalizedTarget == "dec"
+                ? $"{sourceDisplayValue} = {convertedValue} decimal"
+                : $"{sourceDisplayValue} = {convertedValue}";
             return true;
         }
 
         convertedValue = null;
         description = null;
         return false;
+    }
+
+    private static string NormalizeBaseName(string baseName) =>
+        baseName.ToLowerInvariant() switch
+        {
+            "decimal" => "dec",
+            "binary" => "bin",
+            _ => baseName.ToLowerInvariant()
+        };
+
+    private static bool TryParseBaseValue(string source, string value, out ulong parsedValue)
+    {
+        switch (source)
+        {
+            case "hex":
+                return ulong.TryParse(value, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out parsedValue);
+
+            case "dec":
+                return ulong.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedValue);
+
+            case "bin":
+                return TryParseBinary(value, out parsedValue);
+
+            default:
+                parsedValue = 0;
+                return false;
+        }
+    }
+
+    private static string FormatSourceValue(string source, string value)
+    {
+        switch (source)
+        {
+            case "hex":
+                return $"0x{value.ToUpperInvariant()}";
+
+            case "bin":
+                return $"0b{value}";
+
+            default:
+                return ulong.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture);
+        }
+    }
+
+    private static string FormatBaseValue(string target, ulong value)
+    {
+        return target switch
+        {
+            "hex" => $"0x{value:X}",
+            "bin" => $"0b{FormatBinaryDigits(value)}",
+            _ => value.ToString(CultureInfo.InvariantCulture)
+        };
+    }
+
+    private static bool TryParseBinary(string value, out ulong parsedValue)
+    {
+        parsedValue = 0;
+
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        foreach (var ch in value)
+        {
+            if (ch is not ('0' or '1'))
+                return false;
+
+            if (parsedValue > (ulong.MaxValue >> 1))
+                return false;
+
+            parsedValue <<= 1;
+            if (ch == '1')
+                parsedValue |= 1;
+        }
+
+        return true;
+    }
+
+    private static string FormatBinaryDigits(ulong value)
+    {
+        if (value == 0)
+            return "0";
+
+        Span<char> buffer = stackalloc char[64];
+        var index = buffer.Length;
+        var remainingValue = value;
+
+        while (remainingValue > 0)
+        {
+            buffer[--index] = (remainingValue & 1) == 1 ? '1' : '0';
+            remainingValue >>= 1;
+        }
+
+        return new string(buffer[index..]);
     }
 
     private static bool TryConvertMeasurement(string query, out string convertedValue, out string description)
