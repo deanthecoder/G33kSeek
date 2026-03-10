@@ -41,7 +41,7 @@ The initial desktop shell now exists and includes:
 - a dark Fluent Avalonia launcher window
 - a centered Spotlight-like text entry surface
 - a system tray icon with show / hide / exit actions
-- a first-cut global hotkey using **SharpHook** (`Ctrl+Space`)
+- a first-cut global hotkey using **SharpHook** (`Alt+Space` on Windows, `Ctrl+Space` elsewhere)
 - no-prefix app search on macOS and Windows
 - no-prefix file search backed by a cached Documents index
 - direct URL opening for `http://`, `https://`, `www.`, and bare domains

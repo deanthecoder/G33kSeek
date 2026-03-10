@@ -23,15 +23,17 @@ namespace G33kSeek.Services;
 public sealed class GlobalHotkeyService : IDisposable
 {
     private static readonly TimeSpan TriggerCooldown = TimeSpan.FromMilliseconds(250);
+    private readonly bool m_isWindows;
 
     private readonly LauncherWindowService m_launcherWindowService;
     private readonly TaskPoolGlobalHook m_hook;
     private DateTime m_lastToggleUtc;
     private bool m_isStarted;
 
-    public GlobalHotkeyService(LauncherWindowService launcherWindowService)
+    public GlobalHotkeyService(LauncherWindowService launcherWindowService, bool isWindows = false)
     {
         m_launcherWindowService = launcherWindowService ?? throw new ArgumentNullException(nameof(launcherWindowService));
+        m_isWindows = isWindows || OperatingSystem.IsWindows();
         m_hook = new TaskPoolGlobalHook(
             parallelismLevel: 1,
             globalHookType: GlobalHookType.Keyboard,
@@ -64,10 +66,7 @@ public sealed class GlobalHotkeyService : IDisposable
         if (e == null)
             return;
 
-        if (e.Data.KeyCode != KeyCode.VcSpace)
-            return;
-
-        if (!e.RawEvent.Mask.HasCtrl())
+        if (!IsToggleHotkey(e.Data.KeyCode, e.RawEvent.Mask, m_isWindows))
             return;
 
         var nowUtc = DateTime.UtcNow;
@@ -77,4 +76,15 @@ public sealed class GlobalHotkeyService : IDisposable
         m_lastToggleUtc = nowUtc;
         m_launcherWindowService.Toggle();
     }
+
+    internal static bool IsToggleHotkey(KeyCode keyCode, EventMask modifierMask, bool isWindows)
+    {
+        if (keyCode != KeyCode.VcSpace)
+            return false;
+
+        return isWindows ? modifierMask.HasAlt() : modifierMask.HasCtrl();
+    }
+
+    internal static string GetShortcutDisplayText(bool isWindows) =>
+        isWindows ? "Alt+Space" : "Ctrl+Space";
 }

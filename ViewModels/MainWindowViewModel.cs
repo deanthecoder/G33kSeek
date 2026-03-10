@@ -8,6 +8,7 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using System;
 using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,9 +27,10 @@ namespace G33kSeek.ViewModels;
 /// </remarks>
 public class MainWindowViewModel : ViewModelBase
 {
+    private static readonly string HotkeyDisplayText = GlobalHotkeyService.GetShortcutDisplayText(OperatingSystem.IsWindows());
     private readonly QueryEngine m_queryEngine;
     private string m_searchText;
-    private string m_statusText = "Press Ctrl+Space to toggle the launcher. Esc dismisses it.";
+    private string m_statusText = $"Press {HotkeyDisplayText} to toggle the launcher. Esc dismisses it.";
     private QueryResult m_selectedResult;
     private int m_visibleResultCount;
     private bool m_hasResults;
