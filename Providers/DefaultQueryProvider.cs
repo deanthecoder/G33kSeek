@@ -10,6 +10,7 @@
 
 using System;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,6 +63,9 @@ public sealed class DefaultQueryProvider : IQueryProvider
                     [],
                     "Type an app or file name, or use =2+2, ? for help, > for commands."));
         }
+
+        if (TryCreateExistingPathResponse(query, out var pathResponse))
+            return Task.FromResult(pathResponse);
 
         if (TryCreateExplicitUrlResponse(query, out var urlResponse))
             return Task.FromResult(urlResponse);
@@ -147,6 +151,78 @@ public sealed class DefaultQueryProvider : IQueryProvider
             return null;
 
         return $"https://{query}";
+    }
+
+    private static bool TryCreateExistingPathResponse(string query, out QueryResponse response)
+    {
+        var candidatePath = ResolveExistingPathCandidate(query);
+        if (candidatePath == null)
+        {
+            response = null;
+            return false;
+        }
+
+        if (File.Exists(candidatePath))
+        {
+            response = new QueryResponse(
+                [
+                    new QueryResult(
+                        Path.GetFileName(candidatePath),
+                        candidatePath,
+                        "File",
+                        new QueryActionDescriptor(
+                            QueryActionKind.OpenPath,
+                            candidatePath,
+                            successMessage: $"Opening {Path.GetFileName(candidatePath)}."))
+                ],
+                "Path ready. Press Enter to open it.");
+            return true;
+        }
+
+        if (Directory.Exists(candidatePath))
+        {
+            response = new QueryResponse(
+                [
+                    new QueryResult(
+                        new DirectoryInfo(candidatePath).Name,
+                        candidatePath,
+                        "Folder",
+                        new QueryActionDescriptor(
+                            QueryActionKind.OpenPath,
+                            candidatePath,
+                            successMessage: $"Opening {candidatePath}."))
+                ],
+                "Folder ready. Press Enter to open it.");
+            return true;
+        }
+
+        response = null;
+        return false;
+    }
+
+    private static string ResolveExistingPathCandidate(string query)
+    {
+        var trimmedQuery = query?.Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(trimmedQuery))
+            return null;
+
+        if (trimmedQuery == "~")
+            return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        if (trimmedQuery.StartsWith("~/", StringComparison.Ordinal) ||
+            trimmedQuery.StartsWith("~\\", StringComparison.Ordinal))
+        {
+            var homeDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (string.IsNullOrWhiteSpace(homeDirectory))
+                return null;
+
+            var relativePath = trimmedQuery[2..]
+                .Replace('\\', Path.DirectorySeparatorChar)
+                .Replace('/', Path.DirectorySeparatorChar);
+            return Path.Combine(homeDirectory, relativePath);
+        }
+
+        return Path.IsPathRooted(trimmedQuery) ? trimmedQuery : null;
     }
 
     private static bool TryCreateDateTimeResponse(string query, out QueryResponse response)

@@ -236,6 +236,45 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncReturnsDirectFileResultForAbsolutePathWithSpaces()
+    {
+        using var tempDirectory = new TempDirectory();
+        var spacedDirectory = tempDirectory.GetDir("Folder With Spaces");
+        spacedDirectory.Create();
+        var file = spacedDirectory.GetFile("my report.txt");
+        file.WriteAllText("test");
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService(), CreateEmptyFileSearchService());
+
+        var response = await provider.QueryAsync(new QueryRequest(file.FullName, file.FullName, string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo(file.Name));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo(file.FullName));
+        Assert.That(response.Results[0].TrailingText, Is.EqualTo("File"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo(file.FullName));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsDirectFolderResultForQuotedAbsolutePath()
+    {
+        using var tempDirectory = new TempDirectory();
+        var folder = tempDirectory.GetDir("Folder With Spaces");
+        folder.Create();
+        var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService(), CreateEmptyFileSearchService());
+        var quotedPath = $"\"{folder.FullName}\"";
+
+        var response = await provider.QueryAsync(new QueryRequest(quotedPath, quotedPath, string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo(folder.Name));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo(folder.FullName));
+        Assert.That(response.Results[0].TrailingText, Is.EqualTo("Folder"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo(folder.FullName));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsOpenUrlResultForHttpsAddress()
     {
         var provider = new DefaultQueryProvider(CreateEmptyApplicationSearchService(), CreateEmptyFileSearchService());
