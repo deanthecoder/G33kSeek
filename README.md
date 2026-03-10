@@ -1,7 +1,7 @@
 # G33kSeek
 
 **G33kSeek** is a fast, keyboard‑driven launcher inspired by macOS Spotlight.  
-It provides instant access to applications, files, calculations, web search, and AI prompts from a single minimal interface.
+It provides instant access to applications, files, calculations, utilities, and web search from a single minimal interface.
 
 The goal is to create a **lightweight, cross‑platform launcher** powered by **Avalonia** that works on Windows, macOS, and Linux.
 
@@ -18,7 +18,7 @@ G33kSeek should be:
 - **Minimal UI** – small centered window, no clutter.
 - **Extensible** – functionality implemented via pluggable providers.
 - **Cross‑platform** – Windows, macOS, Linux using Avalonia.
-- **Developer‑friendly** – supports quick utilities and AI prompts.
+- **Developer‑friendly** – supports quick utilities and leaves room for future AI integration.
 
 ---
 
@@ -63,8 +63,8 @@ The first characters of the query determine the **mode**.
 | *(none)* | App / File search | `rider` | Search installed apps and indexed files, or open direct URLs |
 | `=` | Calculator | `=2+2` | Evaluate math expressions |
 | `?` | Help / examples / web search | `?` | Show help, filter help topics, or use quoted text for web search |
-| `??` | File content search | `??TODO` | Search file contents |
-| `@` | AI prompt | `@summarise this text` | Send prompt to an AI provider |
+| `??` | File content search | `??TODO` | Planned placeholder for future content search |
+| `@` | AI prompt | `@summarise this text` | Planned placeholder for future AI prompting |
 | `>` | Commands | `>shutdown` | Execute built‑in commands |
 
 ---
@@ -212,7 +212,9 @@ Today the first real `>` commands are:
 
 ## AI Integration
 
-AI prompting should initially support **ChatGPT via API**.
+The `??` and `@` prefixes are currently reserved and surfaced as placeholders, but they are not implemented yet.
+
+Planned future work includes file content search and AI prompting. AI prompting would likely start with **ChatGPT via API**.
 
 Example query:
 
@@ -220,13 +222,13 @@ Example query:
 @explain this C# code
 ```
 
-Future support may include:
+Future AI support may include:
 
 - local LLMs
 - Ollama
 - other AI providers
 
-AI should be implemented as a **provider**.
+AI should still be implemented as a **provider** when it arrives.
 
 ---
 

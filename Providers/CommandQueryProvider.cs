@@ -166,7 +166,11 @@ public sealed class CommandQueryProvider : IQueryProvider
             return true;
 
         var normalizedQuery = query.Trim().ToLowerInvariant();
-        return definition.Name.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase);
+        if (definition.Name.StartsWith(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return normalizedQuery.Length >= 3 &&
+               definition.Name.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase);
     }
 
     private IReadOnlyList<CommandDefinition> GetCommands()

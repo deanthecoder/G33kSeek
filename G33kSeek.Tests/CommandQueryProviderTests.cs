@@ -161,6 +161,17 @@ public class CommandQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncPrefersShortPrefixMatchesOverInnerSubstrings()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
+
+        var response = await provider.QueryAsync(new QueryRequest(">de", "de", ">"), CancellationToken.None);
+
+        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "desktop" }));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsAddFolderCommand()
     {
         using var tempDirectory = new TempDirectory();

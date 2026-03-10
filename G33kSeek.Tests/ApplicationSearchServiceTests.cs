@@ -133,6 +133,36 @@ public class ApplicationSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncPrefersTextMatchesOverInitialismMatches()
+    {
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [
+                new IndexedApplication
+                {
+                    DisplayName = "Smart Print Controller",
+                    SearchName = "smart print controller",
+                    BundleDirectory = new DirectoryInfo("/Applications/Smart Print Controller.app")
+                },
+                new IndexedApplication
+                {
+                    DisplayName = "Project Runner Integration Network Tool",
+                    SearchName = "project runner integration network tool",
+                    BundleDirectory = new DirectoryInfo("/Applications/Project Runner Integration Network Tool.app")
+                }
+            ],
+            isMacOS: true,
+            isWindows: false,
+            DateTime.UtcNow);
+
+        var results = await service.SearchAsync("print", CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(2));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Smart Print Controller"));
+    }
+
+    [Test]
     public async Task SearchAsyncDiscoversWindowsApplicationsFromStartMenuShortcuts()
     {
         using var tempDirectory = new TempDirectory();
