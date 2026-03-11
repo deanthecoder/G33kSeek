@@ -14,6 +14,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DTC.Core.Extensions;
 using G33kSeek.Models;
 using G33kSeek.Services;
 
@@ -162,35 +163,48 @@ public sealed class DefaultQueryProvider : IQueryProvider
             return false;
         }
 
-        if (File.Exists(candidatePath))
+        FileSystemInfo candidate;
+        try
+        {
+            candidate = new FileInfo(candidatePath);
+        }
+        catch
+        {
+            // Not a valid file path.
+            response = null;
+            return false;
+        }
+
+        if (candidate.Exists())
         {
             response = new QueryResponse(
                 [
                     new QueryResult(
-                        Path.GetFileName(candidatePath),
+                        candidate.Name,
                         candidatePath,
                         "File",
                         new QueryActionDescriptor(
                             QueryActionKind.OpenPath,
                             candidatePath,
-                            successMessage: $"Opening {Path.GetFileName(candidatePath)}."))
+                            successMessage: $"Opening {candidate.Name}."))
                 ],
                 "Path ready. Press Enter to open it.");
             return true;
         }
 
-        if (Directory.Exists(candidatePath))
+        candidate = new DirectoryInfo(candidatePath);
+        if (candidate.Exists())
         {
             response = new QueryResponse(
                 [
                     new QueryResult(
-                        new DirectoryInfo(candidatePath).Name,
+                        candidate.Name,
                         candidatePath,
                         "Folder",
                         new QueryActionDescriptor(
                             QueryActionKind.OpenPath,
                             candidatePath,
-                            successMessage: $"Opening {candidatePath}."))
+                            successMessage: $"Opening {candidate.Name}."))
                 ],
                 "Folder ready. Press Enter to open it.");
             return true;
