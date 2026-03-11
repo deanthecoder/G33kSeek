@@ -82,9 +82,9 @@ public sealed class GlobalHotkeyService : IDisposable
         if (keyCode != KeyCode.VcSpace)
             return false;
 
-        return isWindows ? modifierMask.HasAlt() : modifierMask.HasCtrl();
+        return isWindows ? modifierMask.HasMeta() : modifierMask.HasCtrl();
     }
 
     internal static string GetShortcutDisplayText(bool isWindows) =>
-        isWindows ? "Alt+Space" : "Ctrl+Space";
+        isWindows ? "Win+Space" : "Ctrl+Space";
 }

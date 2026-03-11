@@ -12,6 +12,7 @@ using DTC.Core;
 using DTC.Core.Extensions;
 using G33kSeek.Models;
 using G33kSeek.Providers;
+// ReSharper disable AccessToDisposedClosure
 
 namespace G33kSeek.Tests;
 

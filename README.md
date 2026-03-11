@@ -35,7 +35,7 @@ rider
 
 ## How it works
 1. Press the launcher hotkey.
-   Windows currently uses `Alt+Space`. Other platforms currently use `Ctrl+Space`.
+   Windows currently uses `Win+Space`. Other platforms currently use `Ctrl+Space`.
 2. Start typing.
 3. Use the arrow keys to move through results.
 4. Press `Enter` to run the selected result.

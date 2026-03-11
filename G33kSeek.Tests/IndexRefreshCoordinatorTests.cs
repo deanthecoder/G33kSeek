@@ -10,6 +10,7 @@
 
 using G33kSeek.Models;
 using G33kSeek.Services;
+// ReSharper disable AccessToDisposedClosure
 
 namespace G33kSeek.Tests;
 
