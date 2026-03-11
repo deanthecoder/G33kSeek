@@ -29,7 +29,7 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchService
 {
-    private const int CurrentCacheFormatVersion = 5;
+    private const int CurrentCacheFormatVersion = 6;
     private const int MaxVisibleResults = 25;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
     private static readonly HashSet<string> ExcludedDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
@@ -49,9 +49,11 @@ internal sealed class FileSearchService
     private readonly List<DirectoryInfo> m_searchRoots;
     private readonly Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> m_discoverFilesOverride;
     private bool m_hasExplicitSearchRoots;
+    private List<IndexedDirectorySnapshot> m_cachedDirectorySnapshots;
     private List<IndexedFile> m_cachedFiles;
     private DateTime m_lastRefreshUtc;
     private bool m_isRefreshing;
+    private FileRefreshMetrics m_lastRefreshMetrics = FileRefreshMetrics.Empty;
 
     public FileSearchService()
         : this(new FileSearchSettings(), null, null)
@@ -76,7 +78,10 @@ internal sealed class FileSearchService
             Logger.Instance.Info($"Discarding file index cache format v{settings.CacheFormatVersion:N0}; expected v{CurrentCacheFormatVersion:N0}.");
         }
 
-        m_cachedFiles = PrepareIndexedFiles(cachedFiles ?? (isCompatibleCache ? settings.CachedFiles : null));
+        m_cachedDirectorySnapshots = PrepareDirectorySnapshots(isCompatibleCache ? settings.DirectorySnapshots : null);
+        m_cachedFiles = PrepareIndexedFiles(cachedFiles) is { Count: > 0 } preparedCachedFiles
+            ? preparedCachedFiles
+            : FlattenSnapshots(m_cachedDirectorySnapshots);
         m_lastRefreshUtc = isCompatibleCache ? settings.LastFileRefreshUtc : DateTime.MinValue;
     }
 
@@ -84,13 +89,17 @@ internal sealed class FileSearchService
         IEnumerable<DirectoryInfo> searchRoots,
         IEnumerable<IndexedFile> cachedFiles,
         DateTime? lastRefreshUtc = null,
-        Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> discoverFilesOverride = null)
+        Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> discoverFilesOverride = null,
+        IEnumerable<IndexedDirectorySnapshot> cachedDirectorySnapshots = null)
     {
         m_settings = null;
         m_discoverFilesOverride = discoverFilesOverride;
         m_searchRoots = searchRoots?.ToList() ?? [];
         m_hasExplicitSearchRoots = m_searchRoots.Count > 0;
-        m_cachedFiles = PrepareIndexedFiles(cachedFiles);
+        m_cachedDirectorySnapshots = PrepareDirectorySnapshots(cachedDirectorySnapshots);
+        m_cachedFiles = PrepareIndexedFiles(cachedFiles) is { Count: > 0 } preparedCachedFiles
+            ? preparedCachedFiles
+            : FlattenSnapshots(m_cachedDirectorySnapshots);
         m_lastRefreshUtc = lastRefreshUtc ?? DateTime.MinValue;
     }
 
@@ -115,6 +124,8 @@ internal sealed class FileSearchService
     internal bool IsRefreshing => m_isRefreshing;
 
     internal event EventHandler RefreshStateChanged;
+
+    internal FileRefreshMetrics LastRefreshMetrics => m_lastRefreshMetrics;
 
     public Task WarmAsync(CancellationToken cancellationToken = default)
     {
@@ -190,16 +201,17 @@ internal sealed class FileSearchService
         }
     }
 
-    private void SaveIfPersistent()
+    private FileSearchSettings.CachePersistenceMetrics SaveIfPersistent()
     {
         if (m_settings == null)
-            return;
+            return null;
 
-        m_settings.SearchRoots = m_hasExplicitSearchRoots ? m_searchRoots.ToList() : [];
-        m_settings.CachedFiles = m_cachedFiles.ToList();
-        m_settings.LastFileRefreshUtc = m_lastRefreshUtc;
-        m_settings.CacheFormatVersion = CurrentCacheFormatVersion;
-        m_settings.Save();
+        return m_settings.PersistCache(
+            m_searchRoots,
+            m_hasExplicitSearchRoots,
+            m_cachedDirectorySnapshots,
+            m_lastRefreshUtc,
+            CurrentCacheFormatVersion);
     }
 
     internal static IReadOnlyList<DirectoryInfo> GetDefaultSearchRoots(
@@ -228,59 +240,48 @@ internal sealed class FileSearchService
         if (m_discoverFilesOverride != null)
         {
             var overrideResult = m_discoverFilesOverride(cancellationToken);
-            return new FileDiscoverySnapshot(overrideResult.Files, overrideResult.ScannedDirectoryCount, overrideResult.SkippedDirectoryCount);
+            return new FileDiscoverySnapshot(
+                overrideResult.Files,
+                [],
+                overrideResult.ScannedDirectoryCount,
+                overrideResult.ScannedDirectoryCount,
+                0,
+                overrideResult.SkippedDirectoryCount);
         }
 
-        var discoveredFiles = new List<IndexedFile>();
-        var scannedDirectoryCount = 0;
+        var visitedDirectoryCount = 0;
+        var rebuiltDirectoryCount = 0;
+        var reusedDirectoryCount = 0;
         var skippedDirectoryCount = 0;
-        var pendingDirectories = new Stack<DirectoryInfo>(
-            m_searchRoots
-                .Where(root => root?.Exists() == true)
-                .DistinctBy(root => root.FullName, StringComparer.OrdinalIgnoreCase)
-                .Reverse());
+        var existingSnapshotsByPath = m_cachedDirectorySnapshots
+            .Where(snapshot => snapshot?.Directory != null)
+            .ToDictionary(snapshot => snapshot.Directory.FullName, StringComparer.OrdinalIgnoreCase);
+        var refreshedSnapshots = new List<IndexedDirectorySnapshot>();
 
-        while (pendingDirectories.Count > 0)
+        foreach (var rootDirectory in m_searchRoots
+                     .Where(root => root?.Exists() == true)
+                     .DistinctBy(root => root.FullName, StringComparer.OrdinalIgnoreCase))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var currentDirectory = pendingDirectories.Pop();
-            scannedDirectoryCount++;
-
-            DirectoryInfo[] childDirectories;
-            FileInfo[] childFiles;
-            try
-            {
-                childDirectories = currentDirectory.EnumerateDirectories("*", SearchOption.TopDirectoryOnly).ToArray();
-                childFiles = currentDirectory.EnumerateFiles("*", SearchOption.TopDirectoryOnly).ToArray();
-            }
-            catch
-            {
-                continue;
-            }
-
-            foreach (var childDirectory in childDirectories)
-            {
-                if (!ShouldIncludeDirectory(childDirectory))
-                {
-                    skippedDirectoryCount++;
-                    continue;
-                }
-
-                discoveredFiles.Add(CreateIndexedDirectory(childDirectory));
-                pendingDirectories.Push(childDirectory);
-            }
-
-            foreach (var childFile in childFiles)
-            {
-                if (!ShouldIncludeFile(childFile))
-                    continue;
-
-                discoveredFiles.Add(CreateIndexedFile(childFile));
-            }
+            existingSnapshotsByPath.TryGetValue(rootDirectory.FullName, out var existingSnapshot);
+            var refreshedSnapshot = RefreshDirectorySnapshot(
+                rootDirectory,
+                existingSnapshot,
+                cancellationToken,
+                ref visitedDirectoryCount,
+                ref rebuiltDirectoryCount,
+                ref reusedDirectoryCount,
+                ref skippedDirectoryCount);
+            if (refreshedSnapshot != null)
+                refreshedSnapshots.Add(refreshedSnapshot);
         }
 
-        return new FileDiscoverySnapshot(discoveredFiles, scannedDirectoryCount, skippedDirectoryCount);
+        return new FileDiscoverySnapshot(
+            FlattenSnapshots(refreshedSnapshots),
+            refreshedSnapshots,
+            visitedDirectoryCount,
+            rebuiltDirectoryCount,
+            reusedDirectoryCount,
+            skippedDirectoryCount);
     }
 
     private static bool ShouldIncludeDirectory(DirectoryInfo directory)
@@ -321,13 +322,29 @@ internal sealed class FileSearchService
         var stopwatch = Stopwatch.StartNew();
         Logger.Instance.Info($"Refreshing file index across {m_searchRoots.Count} root(s).");
 
+        var discoverStopwatch = Stopwatch.StartNew();
         var snapshot = await Task.Run(() => DiscoverFiles(cancellationToken), cancellationToken);
+        discoverStopwatch.Stop();
+
+        var cacheBuildStopwatch = Stopwatch.StartNew();
         m_cachedFiles = snapshot.Files.ToList();
+        m_cachedDirectorySnapshots = snapshot.DirectorySnapshots.ToList();
+        cacheBuildStopwatch.Stop();
+
         m_lastRefreshUtc = DateTime.UtcNow;
-        SaveIfPersistent();
+        var persistenceMetrics = SaveIfPersistent();
+        m_lastRefreshMetrics = new FileRefreshMetrics(
+            snapshot.VisitedDirectoryCount,
+            snapshot.RebuiltDirectoryCount,
+            snapshot.ReusedDirectoryCount,
+            snapshot.SkippedDirectoryCount);
+
+        var persistenceSummary = persistenceMetrics == null
+            ? "Persistence skipped."
+            : $"Persistence: serialize {persistenceMetrics.SerializeDuration.TotalMilliseconds:N0} ms, compress {persistenceMetrics.CompressDuration.TotalMilliseconds:N0} ms, save {persistenceMetrics.SaveDuration.TotalMilliseconds:N0} ms, payload {persistenceMetrics.SerializedCharacterCount:N0} chars -> {persistenceMetrics.CompressedByteCount:N0} bytes.";
 
         Logger.Instance.Info(
-            $"File index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Indexed {snapshot.Files.Count:N0} items from {snapshot.ScannedDirectoryCount:N0} directories and skipped {snapshot.SkippedDirectoryCount:N0} excluded directories.");
+            $"File index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Discover {discoverStopwatch.ElapsedMilliseconds:N0} ms, cache build {cacheBuildStopwatch.ElapsedMilliseconds:N0} ms. Indexed {snapshot.Files.Count:N0} items from {snapshot.VisitedDirectoryCount:N0} visited directories ({snapshot.RebuiltDirectoryCount:N0} rebuilt, {snapshot.ReusedDirectoryCount:N0} reused) and skipped {snapshot.SkippedDirectoryCount:N0} excluded directories. {persistenceSummary}");
     }
 
     private bool NeedsRefresh()
@@ -530,9 +547,130 @@ internal sealed class FileSearchService
         return bestScore;
     }
 
+    private IndexedDirectorySnapshot RefreshDirectorySnapshot(
+        DirectoryInfo directory,
+        IndexedDirectorySnapshot existingSnapshot,
+        CancellationToken cancellationToken,
+        ref int visitedDirectoryCount,
+        ref int rebuiltDirectoryCount,
+        ref int reusedDirectoryCount,
+        ref int skippedDirectoryCount)
+    {
+        if (directory?.Exists() != true)
+            return null;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        directory.Refresh();
+        visitedDirectoryCount++;
+
+        var currentLastWriteTimeUtc = directory.LastWriteTimeUtc;
+        var isUnchanged = existingSnapshot != null &&
+                          existingSnapshot.Directory?.FullName.Equals(directory.FullName, StringComparison.OrdinalIgnoreCase) == true &&
+                          existingSnapshot.LastWriteTimeUtc == currentLastWriteTimeUtc;
+
+        var existingChildrenByPath = existingSnapshot?.Children?
+            .Where(child => child?.Directory != null)
+            .ToDictionary(child => child.Directory.FullName, StringComparer.OrdinalIgnoreCase);
+
+        if (isUnchanged)
+        {
+            reusedDirectoryCount++;
+            var refreshedChildren = new List<IndexedDirectorySnapshot>();
+            try
+            {
+                foreach (var childDirectory in directory.EnumerateDirectories("*", SearchOption.TopDirectoryOnly))
+                {
+                    if (!ShouldIncludeDirectory(childDirectory))
+                    {
+                        skippedDirectoryCount++;
+                        continue;
+                    }
+
+                    IndexedDirectorySnapshot existingChildSnapshot = null;
+                    existingChildrenByPath?.TryGetValue(childDirectory.FullName, out existingChildSnapshot);
+                    var refreshedChild = RefreshDirectorySnapshot(
+                        childDirectory,
+                        existingChildSnapshot,
+                        cancellationToken,
+                        ref visitedDirectoryCount,
+                        ref rebuiltDirectoryCount,
+                        ref reusedDirectoryCount,
+                        ref skippedDirectoryCount);
+                    if (refreshedChild != null)
+                        refreshedChildren.Add(refreshedChild);
+                }
+            }
+            catch
+            {
+                return null;
+            }
+
+            return new IndexedDirectorySnapshot
+            {
+                Directory = directory,
+                LastWriteTimeUtc = currentLastWriteTimeUtc,
+                Entries = existingSnapshot.Entries ?? [],
+                Children = refreshedChildren
+            };
+        }
+
+        rebuiltDirectoryCount++;
+        var directEntries = new List<IndexedFile>();
+        var childSnapshots = new List<IndexedDirectorySnapshot>();
+
+        try
+        {
+            foreach (var childDirectory in directory.EnumerateDirectories("*", SearchOption.TopDirectoryOnly))
+            {
+                if (!ShouldIncludeDirectory(childDirectory))
+                {
+                    skippedDirectoryCount++;
+                    continue;
+                }
+
+                directEntries.Add(CreateIndexedDirectory(childDirectory));
+                IndexedDirectorySnapshot existingChildSnapshot = null;
+                existingChildrenByPath?.TryGetValue(childDirectory.FullName, out existingChildSnapshot);
+                var refreshedChild = RefreshDirectorySnapshot(
+                    childDirectory,
+                    existingChildSnapshot,
+                    cancellationToken,
+                    ref visitedDirectoryCount,
+                    ref rebuiltDirectoryCount,
+                    ref reusedDirectoryCount,
+                    ref skippedDirectoryCount);
+                if (refreshedChild != null)
+                    childSnapshots.Add(refreshedChild);
+            }
+
+            foreach (var childFile in directory.EnumerateFiles("*", SearchOption.TopDirectoryOnly))
+            {
+                if (!ShouldIncludeFile(childFile))
+                    continue;
+
+                directEntries.Add(CreateIndexedFile(childFile));
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return new IndexedDirectorySnapshot
+        {
+            Directory = directory,
+            LastWriteTimeUtc = currentLastWriteTimeUtc,
+            Entries = directEntries,
+            Children = childSnapshots
+        };
+    }
+
     private sealed record FileDiscoverySnapshot(
         IReadOnlyList<IndexedFile> Files,
-        int ScannedDirectoryCount,
+        IReadOnlyList<IndexedDirectorySnapshot> DirectorySnapshots,
+        int VisitedDirectoryCount,
+        int RebuiltDirectoryCount,
+        int ReusedDirectoryCount,
         int SkippedDirectoryCount);
 
     private sealed record FileSortKey(
@@ -555,6 +693,46 @@ internal sealed class FileSearchService
         }
 
         return preparedFiles;
+    }
+
+    private static List<IndexedDirectorySnapshot> PrepareDirectorySnapshots(IEnumerable<IndexedDirectorySnapshot> cachedDirectorySnapshots)
+    {
+        if (cachedDirectorySnapshots == null)
+            return [];
+
+        var preparedSnapshots = new List<IndexedDirectorySnapshot>();
+        foreach (var cachedDirectorySnapshot in cachedDirectorySnapshots.Where(snapshot => snapshot?.Directory != null))
+        {
+            cachedDirectorySnapshot.Entries = PrepareIndexedFiles(cachedDirectorySnapshot.Entries);
+            cachedDirectorySnapshot.Children = PrepareDirectorySnapshots(cachedDirectorySnapshot.Children);
+            preparedSnapshots.Add(cachedDirectorySnapshot);
+        }
+
+        return preparedSnapshots;
+    }
+
+    private static List<IndexedFile> FlattenSnapshots(IEnumerable<IndexedDirectorySnapshot> snapshots)
+    {
+        var flattenedFiles = new List<IndexedFile>();
+        foreach (var snapshot in snapshots ?? [])
+            AddSnapshotEntries(snapshot, flattenedFiles);
+
+        return flattenedFiles;
+    }
+
+    private static void AddSnapshotEntries(IndexedDirectorySnapshot snapshot, List<IndexedFile> flattenedFiles)
+    {
+        if (snapshot == null)
+            return;
+
+        if (snapshot.Entries != null)
+            flattenedFiles.AddRange(snapshot.Entries);
+
+        if (snapshot.Children == null)
+            return;
+
+        foreach (var childSnapshot in snapshot.Children)
+            AddSnapshotEntries(childSnapshot, flattenedFiles);
     }
 
     private static IndexedFile CreateIndexedDirectory(DirectoryInfo directory)
@@ -604,5 +782,14 @@ internal sealed class FileSearchService
             .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
             .Where(segment => !string.IsNullOrWhiteSpace(segment))
             .ToArray();
+    }
+
+    internal sealed record FileRefreshMetrics(
+        int VisitedDirectoryCount,
+        int RebuiltDirectoryCount,
+        int ReusedDirectoryCount,
+        int SkippedDirectoryCount)
+    {
+        public static FileRefreshMetrics Empty { get; } = new(0, 0, 0, 0);
     }
 }

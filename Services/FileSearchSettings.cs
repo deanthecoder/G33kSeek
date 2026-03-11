@@ -10,7 +10,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using DTC.Core.Extensions;
 using DTC.Core.JsonConverters;
 using DTC.Core.Settings;
@@ -28,6 +30,8 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchSettings : UserSettingsBase
 {
+    private static readonly JsonSerializerSettings SerializerSettings = CreateSerializerSettings();
+
     protected override string SettingsFileName => "file-search-settings.json";
 
     public List<DirectoryInfo> SearchRoots
@@ -36,25 +40,25 @@ internal sealed class FileSearchSettings : UserSettingsBase
         set => Set(value ?? []);
     }
 
-    public byte[] CachedFilesData
+    public byte[] DirectorySnapshotsData
     {
         get => Get<byte[]>() ?? [];
         set => Set(value ?? []);
     }
 
-    public List<IndexedFile> CachedFiles
+    public List<IndexedDirectorySnapshot> DirectorySnapshots
     {
         get
         {
-            if (CachedFilesData.Length == 0)
+            if (DirectorySnapshotsData.Length == 0)
                 return [];
 
-            return JsonConvert.DeserializeObject<List<IndexedFile>>(CachedFilesData.DecompressToString(), CreateSerializerSettings()) ?? [];
+            return JsonConvert.DeserializeObject<List<IndexedDirectorySnapshot>>(DirectorySnapshotsData.DecompressToString(), SerializerSettings) ?? [];
         }
         set
         {
-            var serialized = JsonConvert.SerializeObject(value ?? [], Formatting.None, CreateSerializerSettings());
-            CachedFilesData = serialized.Compress();
+            var serialized = JsonConvert.SerializeObject(value ?? [], Formatting.None, SerializerSettings);
+            DirectorySnapshotsData = serialized.Compress();
         }
     }
 
@@ -73,9 +77,41 @@ internal sealed class FileSearchSettings : UserSettingsBase
     protected override void ApplyDefaults()
     {
         SearchRoots = [];
-        CachedFilesData = [];
+        DirectorySnapshotsData = [];
         LastFileRefreshUtc = DateTime.MinValue;
         CacheFormatVersion = 0;
+    }
+
+    internal CachePersistenceMetrics PersistCache(
+        IReadOnlyList<DirectoryInfo> searchRoots,
+        bool hasExplicitSearchRoots,
+        IReadOnlyList<IndexedDirectorySnapshot> directorySnapshots,
+        DateTime lastRefreshUtc,
+        int cacheFormatVersion)
+    {
+        var serializeStopwatch = Stopwatch.StartNew();
+        var serializedCache = JsonConvert.SerializeObject(directorySnapshots ?? [], Formatting.None, SerializerSettings);
+        serializeStopwatch.Stop();
+
+        var compressStopwatch = Stopwatch.StartNew();
+        var compressedCache = serializedCache.Compress();
+        compressStopwatch.Stop();
+
+        SearchRoots = hasExplicitSearchRoots ? (searchRoots?.ToList() ?? []) : [];
+        DirectorySnapshotsData = compressedCache;
+        LastFileRefreshUtc = lastRefreshUtc;
+        CacheFormatVersion = cacheFormatVersion;
+
+        var saveStopwatch = Stopwatch.StartNew();
+        Save();
+        saveStopwatch.Stop();
+
+        return new CachePersistenceMetrics(
+            serializeStopwatch.Elapsed,
+            compressStopwatch.Elapsed,
+            saveStopwatch.Elapsed,
+            serializedCache.Length,
+            compressedCache.Length);
     }
 
     private static JsonSerializerSettings CreateSerializerSettings() =>
@@ -88,4 +124,11 @@ internal sealed class FileSearchSettings : UserSettingsBase
                 new StringEnumConverter()
             ]
         };
+
+    internal sealed record CachePersistenceMetrics(
+        TimeSpan SerializeDuration,
+        TimeSpan CompressDuration,
+        TimeSpan SaveDuration,
+        int SerializedCharacterCount,
+        int CompressedByteCount);
 }

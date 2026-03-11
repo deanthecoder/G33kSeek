@@ -285,6 +285,55 @@ public class FileSearchServiceTests
         Assert.That(refreshCount, Is.EqualTo(1));
     }
 
+    [Test]
+    public async Task RefreshNowAsyncReusesUnchangedDirectories()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        var imagesDirectory = documentsDirectory.GetDir("Images");
+        var nestedDirectory = imagesDirectory.GetDir("Nested");
+        nestedDirectory.Create();
+        documentsDirectory.GetFile("report.txt").WriteAllText("report");
+        nestedDirectory.GetFile("image.png").WriteAllText("image");
+        var service = new FileSearchService([documentsDirectory], [], DateTime.MinValue);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+        await service.RefreshNowAsync(CancellationToken.None);
+
+        Assert.That(service.LastRefreshMetrics.VisitedDirectoryCount, Is.EqualTo(3));
+        Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.EqualTo(0));
+        Assert.That(service.LastRefreshMetrics.ReusedDirectoryCount, Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task RefreshNowAsyncRebuildsOnlyChangedSubtree()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        var stableDirectory = documentsDirectory.GetDir("Stable");
+        var changingDirectory = documentsDirectory.GetDir("Changing");
+        var deepDirectory = changingDirectory.GetDir("Deep");
+        stableDirectory.Create();
+        deepDirectory.Create();
+        stableDirectory.GetFile("stable.txt").WriteAllText("stable");
+        deepDirectory.GetFile("before.txt").WriteAllText("before");
+        var service = new FileSearchService([documentsDirectory], [], DateTime.MinValue);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+
+        Thread.Sleep(1100);
+        deepDirectory.GetFile("after.txt").WriteAllText("after");
+
+        await service.RefreshNowAsync(CancellationToken.None);
+        var results = await service.SearchAsync("after", CancellationToken.None);
+
+        Assert.That(results.VisibleFiles.Any(result => result.DisplayName == "after.txt"), Is.True);
+        Assert.That(service.LastRefreshMetrics.VisitedDirectoryCount, Is.EqualTo(4));
+        Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.GreaterThan(0));
+        Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.LessThan(service.LastRefreshMetrics.VisitedDirectoryCount));
+        Assert.That(service.LastRefreshMetrics.ReusedDirectoryCount, Is.GreaterThan(0));
+    }
+
     private static string CreateRootedPath(params string[] segments)
     {
         var root = Path.GetPathRoot(Environment.CurrentDirectory) ?? Path.DirectorySeparatorChar.ToString();
