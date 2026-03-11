@@ -82,7 +82,7 @@ internal sealed class FileSearchSettings : UserSettingsBase
         CacheFormatVersion = 0;
     }
 
-    internal CachePersistenceMetrics PersistCache(
+    internal void PersistCache(
         IReadOnlyList<DirectoryInfo> searchRoots,
         bool hasExplicitSearchRoots,
         IReadOnlyList<IndexedDirectorySnapshot> directorySnapshots,
@@ -102,16 +102,7 @@ internal sealed class FileSearchSettings : UserSettingsBase
         LastFileRefreshUtc = lastRefreshUtc;
         CacheFormatVersion = cacheFormatVersion;
 
-        var saveStopwatch = Stopwatch.StartNew();
         Save();
-        saveStopwatch.Stop();
-
-        return new CachePersistenceMetrics(
-            serializeStopwatch.Elapsed,
-            compressStopwatch.Elapsed,
-            saveStopwatch.Elapsed,
-            serializedCache.Length,
-            compressedCache.Length);
     }
 
     private static JsonSerializerSettings CreateSerializerSettings() =>
@@ -124,11 +115,4 @@ internal sealed class FileSearchSettings : UserSettingsBase
                 new StringEnumConverter()
             ]
         };
-
-    internal sealed record CachePersistenceMetrics(
-        TimeSpan SerializeDuration,
-        TimeSpan CompressDuration,
-        TimeSpan SaveDuration,
-        int SerializedCharacterCount,
-        int CompressedByteCount);
 }

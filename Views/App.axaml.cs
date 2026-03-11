@@ -25,6 +25,7 @@ namespace G33kSeek.Views;
 
 public class App : Application
 {
+    private FileSearchService m_fileSearchService;
     private GlobalHotkeyService m_globalHotkeyService;
     private TrayIconService m_trayIconService;
 
@@ -38,8 +39,8 @@ public class App : Application
             Logger.Instance.Info("Starting G33kSeek.");
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             var applicationSearchService = new ApplicationSearchService();
-            var fileSearchService = new FileSearchService();
-            var indexRefreshCoordinator = new IndexRefreshCoordinator(applicationSearchService, fileSearchService);
+            m_fileSearchService = new FileSearchService();
+            var indexRefreshCoordinator = new IndexRefreshCoordinator(applicationSearchService, m_fileSearchService);
 
             List<QueryProvider> providers = [];
             var supplementalHelpEntries = new[]
@@ -67,13 +68,13 @@ public class App : Application
                     .Concat(supplementalHelpEntries)
                     .ToArray();
 
-            providers.Add(new DefaultQueryProvider(applicationSearchService, fileSearchService));
+            providers.Add(new DefaultQueryProvider(applicationSearchService, m_fileSearchService));
             providers.Add(new CalculatorQueryProvider());
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path.", "??TODO"));
             providers.Add(new PlaceholderQueryProvider("@", "AI prompt", "AI provider integration comes after the local query engine.", "@summarise this text"));
             providers.Add(new CommandQueryProvider());
-            QueryExecutionService.SearchRootAdder = fileSearchService.AddSearchRootAsync;
+            QueryExecutionService.SearchRootAdder = m_fileSearchService.AddSearchRootAsync;
             QueryExecutionService.IndexRefresher = indexRefreshCoordinator.RefreshAllAsync;
 
             var queryEngine = new QueryEngine(providers);
@@ -100,6 +101,7 @@ public class App : Application
     private void Desktop_OnExit(object sender, ControlledApplicationLifetimeExitEventArgs e)
     {
         m_globalHotkeyService?.Dispose();
+        m_fileSearchService?.Dispose();
         m_trayIconService?.Dispose();
     }
 }

@@ -300,9 +300,9 @@ public class FileSearchServiceTests
         await service.RefreshNowAsync(CancellationToken.None);
         await service.RefreshNowAsync(CancellationToken.None);
 
-        Assert.That(service.LastRefreshMetrics.VisitedDirectoryCount, Is.EqualTo(3));
+        Assert.That(service.LastRefreshMetrics.VisitedDirectoryCount, Is.EqualTo(1));
         Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.EqualTo(0));
-        Assert.That(service.LastRefreshMetrics.ReusedDirectoryCount, Is.EqualTo(3));
+        Assert.That(service.LastRefreshMetrics.ReusedDirectoryCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -323,15 +323,67 @@ public class FileSearchServiceTests
 
         Thread.Sleep(1100);
         deepDirectory.GetFile("after.txt").WriteAllText("after");
+        service.MarkPathDirty(deepDirectory.FullName);
 
         await service.RefreshNowAsync(CancellationToken.None);
         var results = await service.SearchAsync("after", CancellationToken.None);
 
         Assert.That(results.VisibleFiles.Any(result => result.DisplayName == "after.txt"), Is.True);
-        Assert.That(service.LastRefreshMetrics.VisitedDirectoryCount, Is.EqualTo(4));
+        Assert.That(service.LastRefreshMetrics.VisitedDirectoryCount, Is.EqualTo(3));
         Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.GreaterThan(0));
         Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.LessThan(service.LastRefreshMetrics.VisitedDirectoryCount));
         Assert.That(service.LastRefreshMetrics.ReusedDirectoryCount, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public async Task RefreshNowAsyncReusesCleanTopLevelBucketsWhenKnownDirtyPathIsOutsideThem()
+    {
+        using var tempDirectory = new TempDirectory();
+        var sourceDirectory = tempDirectory.GetDir("Source");
+        var repoOneDirectory = sourceDirectory.GetDir("RepoOne");
+        var repoTwoDirectory = sourceDirectory.GetDir("RepoTwo");
+        var repoOneDeepDirectory = repoOneDirectory.GetDir("Deep");
+        var repoTwoDeepDirectory = repoTwoDirectory.GetDir("Deep");
+        repoOneDeepDirectory.Create();
+        repoTwoDeepDirectory.Create();
+        repoOneDeepDirectory.GetFile("one.txt").WriteAllText("one");
+        repoTwoDeepDirectory.GetFile("before.txt").WriteAllText("before");
+        var service = new FileSearchService([sourceDirectory], [], DateTime.MinValue);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+
+        Thread.Sleep(1100);
+        var changedFile = repoTwoDeepDirectory.GetFile("after.txt");
+        changedFile.WriteAllText("after");
+        service.MarkPathDirty(changedFile.FullName);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+
+        Assert.That(service.LastRefreshMetrics.VisitedDirectoryCount, Is.EqualTo(3));
+        Assert.That(service.LastRefreshMetrics.ReusedDirectoryCount, Is.GreaterThanOrEqualTo(2));
+    }
+
+    [Test]
+    public async Task RefreshNowAsyncMarksRootEntriesDirtyForTopLevelFiles()
+    {
+        using var tempDirectory = new TempDirectory();
+        var sourceDirectory = tempDirectory.GetDir("Source");
+        sourceDirectory.Create();
+        sourceDirectory.GetFile("before.txt").WriteAllText("before");
+        var service = new FileSearchService([sourceDirectory], [], DateTime.MinValue);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+
+        Thread.Sleep(1100);
+        var changedFile = sourceDirectory.GetFile("after.txt");
+        changedFile.WriteAllText("after");
+        service.MarkPathDirty(changedFile.FullName);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+        var results = await service.SearchAsync("after", CancellationToken.None);
+
+        Assert.That(results.VisibleFiles.Any(result => result.DisplayName == "after.txt"), Is.True);
+        Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.GreaterThan(0));
     }
 
     private static string CreateRootedPath(params string[] segments)

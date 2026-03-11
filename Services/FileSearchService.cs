@@ -27,7 +27,7 @@ namespace G33kSeek.Services;
 /// <remarks>
 /// This keeps file search fast by indexing configured roots in the background and serving matches from an in-memory cache.
 /// </remarks>
-internal sealed class FileSearchService
+internal sealed class FileSearchService : IDisposable
 {
     private const int CurrentCacheFormatVersion = 6;
     private const int MaxVisibleResults = 25;
@@ -48,6 +48,9 @@ internal sealed class FileSearchService
     private readonly FileSearchSettings m_settings;
     private readonly List<DirectoryInfo> m_searchRoots;
     private readonly Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> m_discoverFilesOverride;
+    private readonly bool m_enableWatchers;
+    private readonly object m_watchStateLock = new();
+    private readonly Dictionary<string, RootWatchState> m_rootWatchStates = new(StringComparer.OrdinalIgnoreCase);
     private bool m_hasExplicitSearchRoots;
     private List<IndexedDirectorySnapshot> m_cachedDirectorySnapshots;
     private List<IndexedFile> m_cachedFiles;
@@ -68,6 +71,7 @@ internal sealed class FileSearchService
     {
         m_settings = settings;
         m_discoverFilesOverride = discoverFilesOverride;
+        m_enableWatchers = true;
         var configuredRoots = settings?.SearchRoots?.Where(root => root != null).ToArray() ?? [];
         m_hasExplicitSearchRoots = configuredRoots.Length > 0;
         m_searchRoots = (searchRoots?.ToArray() ?? (m_hasExplicitSearchRoots ? configuredRoots : GetDefaultSearchRoots(OperatingSystem.IsWindows())))
@@ -83,6 +87,7 @@ internal sealed class FileSearchService
             ? preparedCachedFiles
             : FlattenSnapshots(m_cachedDirectorySnapshots);
         m_lastRefreshUtc = isCompatibleCache ? settings.LastFileRefreshUtc : DateTime.MinValue;
+        ResetWatchers();
     }
 
     internal FileSearchService(
@@ -90,10 +95,12 @@ internal sealed class FileSearchService
         IEnumerable<IndexedFile> cachedFiles,
         DateTime? lastRefreshUtc = null,
         Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> discoverFilesOverride = null,
-        IEnumerable<IndexedDirectorySnapshot> cachedDirectorySnapshots = null)
+        IEnumerable<IndexedDirectorySnapshot> cachedDirectorySnapshots = null,
+        bool enableWatchers = false)
     {
         m_settings = null;
         m_discoverFilesOverride = discoverFilesOverride;
+        m_enableWatchers = enableWatchers;
         m_searchRoots = searchRoots?.ToList() ?? [];
         m_hasExplicitSearchRoots = m_searchRoots.Count > 0;
         m_cachedDirectorySnapshots = PrepareDirectorySnapshots(cachedDirectorySnapshots);
@@ -101,6 +108,7 @@ internal sealed class FileSearchService
             ? preparedCachedFiles
             : FlattenSnapshots(m_cachedDirectorySnapshots);
         m_lastRefreshUtc = lastRefreshUtc ?? DateTime.MinValue;
+        ResetWatchers();
     }
 
     public async Task<FileSearchResult> SearchAsync(string query, CancellationToken cancellationToken)
@@ -126,6 +134,25 @@ internal sealed class FileSearchService
     internal event EventHandler RefreshStateChanged;
 
     internal FileRefreshMetrics LastRefreshMetrics => m_lastRefreshMetrics;
+
+    /// <summary>
+    /// Releases any active watchers owned by the file index.
+    /// </summary>
+    /// <remarks>
+    /// Watchers are optional in tests, but in the real app they need to be torn down on exit so they do not outlive the launcher process.
+    /// </remarks>
+    public void Dispose()
+    {
+        lock (m_watchStateLock)
+        {
+            foreach (var rootWatchState in m_rootWatchStates.Values)
+                rootWatchState.Watcher?.Dispose();
+
+            m_rootWatchStates.Clear();
+        }
+
+        m_refreshLock.Dispose();
+    }
 
     public Task WarmAsync(CancellationToken cancellationToken = default)
     {
@@ -154,6 +181,7 @@ internal sealed class FileSearchService
             m_hasExplicitSearchRoots = true;
             m_searchRoots.Add(directory);
             ReplaceSearchRoots(ConsolidateRoots(m_searchRoots));
+            ResetWatchers();
 
             await RefreshCoreAsync(cancellationToken);
             return FileSearchRootAddStatus.Added;
@@ -201,12 +229,9 @@ internal sealed class FileSearchService
         }
     }
 
-    private FileSearchSettings.CachePersistenceMetrics SaveIfPersistent()
+    private void SaveIfPersistent()
     {
-        if (m_settings == null)
-            return null;
-
-        return m_settings.PersistCache(
+        m_settings?.PersistCache(
             m_searchRoots,
             m_hasExplicitSearchRoots,
             m_cachedDirectorySnapshots,
@@ -235,7 +260,7 @@ internal sealed class FileSearchService
         return roots;
     }
 
-    private FileDiscoverySnapshot DiscoverFiles(CancellationToken cancellationToken)
+    private FileDiscoverySnapshot DiscoverFiles(CancellationToken cancellationToken, IReadOnlyDictionary<string, DirtyRootState> dirtyRootStates)
     {
         if (m_discoverFilesOverride != null)
         {
@@ -245,14 +270,12 @@ internal sealed class FileSearchService
                 [],
                 overrideResult.ScannedDirectoryCount,
                 overrideResult.ScannedDirectoryCount,
-                0,
-                overrideResult.SkippedDirectoryCount);
+                0);
         }
 
         var visitedDirectoryCount = 0;
         var rebuiltDirectoryCount = 0;
         var reusedDirectoryCount = 0;
-        var skippedDirectoryCount = 0;
         var existingSnapshotsByPath = m_cachedDirectorySnapshots
             .Where(snapshot => snapshot?.Directory != null)
             .ToDictionary(snapshot => snapshot.Directory.FullName, StringComparer.OrdinalIgnoreCase);
@@ -263,14 +286,17 @@ internal sealed class FileSearchService
                      .DistinctBy(root => root.FullName, StringComparer.OrdinalIgnoreCase))
         {
             existingSnapshotsByPath.TryGetValue(rootDirectory.FullName, out var existingSnapshot);
+            DirtyRootState dirtyRootState = null;
+            dirtyRootStates?.TryGetValue(NormalizeRootPath(rootDirectory.FullName), out dirtyRootState);
             var refreshedSnapshot = RefreshDirectorySnapshot(
                 rootDirectory,
                 existingSnapshot,
+                dirtyRootState,
+                depth: 0,
                 cancellationToken,
                 ref visitedDirectoryCount,
                 ref rebuiltDirectoryCount,
-                ref reusedDirectoryCount,
-                ref skippedDirectoryCount);
+                ref reusedDirectoryCount);
             if (refreshedSnapshot != null)
                 refreshedSnapshots.Add(refreshedSnapshot);
         }
@@ -280,8 +306,7 @@ internal sealed class FileSearchService
             refreshedSnapshots,
             visitedDirectoryCount,
             rebuiltDirectoryCount,
-            reusedDirectoryCount,
-            skippedDirectoryCount);
+            reusedDirectoryCount);
     }
 
     private static bool ShouldIncludeDirectory(DirectoryInfo directory)
@@ -321,9 +346,11 @@ internal sealed class FileSearchService
 
         var stopwatch = Stopwatch.StartNew();
         Logger.Instance.Info($"Refreshing file index across {m_searchRoots.Count} root(s).");
+        var dirtyRootStates = CaptureAndClearDirtyRootStates();
+        Logger.Instance.Info(BuildDirtyStateSummary(dirtyRootStates));
 
         var discoverStopwatch = Stopwatch.StartNew();
-        var snapshot = await Task.Run(() => DiscoverFiles(cancellationToken), cancellationToken);
+        var snapshot = await Task.Run(() => DiscoverFiles(cancellationToken, dirtyRootStates), cancellationToken);
         discoverStopwatch.Stop();
 
         var cacheBuildStopwatch = Stopwatch.StartNew();
@@ -332,19 +359,13 @@ internal sealed class FileSearchService
         cacheBuildStopwatch.Stop();
 
         m_lastRefreshUtc = DateTime.UtcNow;
-        var persistenceMetrics = SaveIfPersistent();
+        SaveIfPersistent();
         m_lastRefreshMetrics = new FileRefreshMetrics(
             snapshot.VisitedDirectoryCount,
             snapshot.RebuiltDirectoryCount,
-            snapshot.ReusedDirectoryCount,
-            snapshot.SkippedDirectoryCount);
-
-        var persistenceSummary = persistenceMetrics == null
-            ? "Persistence skipped."
-            : $"Persistence: serialize {persistenceMetrics.SerializeDuration.TotalMilliseconds:N0} ms, compress {persistenceMetrics.CompressDuration.TotalMilliseconds:N0} ms, save {persistenceMetrics.SaveDuration.TotalMilliseconds:N0} ms, payload {persistenceMetrics.SerializedCharacterCount:N0} chars -> {persistenceMetrics.CompressedByteCount:N0} bytes.";
-
+            snapshot.ReusedDirectoryCount);
         Logger.Instance.Info(
-            $"File index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Discover {discoverStopwatch.ElapsedMilliseconds:N0} ms, cache build {cacheBuildStopwatch.ElapsedMilliseconds:N0} ms. Indexed {snapshot.Files.Count:N0} items from {snapshot.VisitedDirectoryCount:N0} visited directories ({snapshot.RebuiltDirectoryCount:N0} rebuilt, {snapshot.ReusedDirectoryCount:N0} reused) and skipped {snapshot.SkippedDirectoryCount:N0} excluded directories. {persistenceSummary}");
+            $"File index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Discover {discoverStopwatch.ElapsedMilliseconds:N0} ms. Indexed {snapshot.Files.Count:N0} items from {snapshot.VisitedDirectoryCount:N0} visited directories ({snapshot.RebuiltDirectoryCount:N0} rebuilt, {snapshot.ReusedDirectoryCount:N0} reused).");
     }
 
     private bool NeedsRefresh()
@@ -365,6 +386,14 @@ internal sealed class FileSearchService
     {
         m_searchRoots.Clear();
         m_searchRoots.AddRange(directories.Where(directory => directory != null));
+    }
+
+    internal void MarkPathDirty(string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(fullPath));
+
+        MarkPathDirtyCore(fullPath);
     }
 
     private static IReadOnlyList<DirectoryInfo> ConsolidateRoots(IEnumerable<DirectoryInfo> roots)
@@ -547,14 +576,15 @@ internal sealed class FileSearchService
         return bestScore;
     }
 
-    private IndexedDirectorySnapshot RefreshDirectorySnapshot(
+    private static IndexedDirectorySnapshot RefreshDirectorySnapshot(
         DirectoryInfo directory,
         IndexedDirectorySnapshot existingSnapshot,
+        DirtyRootState dirtyRootState,
+        int depth,
         CancellationToken cancellationToken,
         ref int visitedDirectoryCount,
         ref int rebuiltDirectoryCount,
-        ref int reusedDirectoryCount,
-        ref int skippedDirectoryCount)
+        ref int reusedDirectoryCount)
     {
         if (directory?.Exists() != true)
             return null;
@@ -564,6 +594,12 @@ internal sealed class FileSearchService
         visitedDirectoryCount++;
 
         var currentLastWriteTimeUtc = directory.LastWriteTimeUtc;
+        if (CanReuseWholeSnapshotWithoutTraversal(directory, existingSnapshot, dirtyRootState, depth, currentLastWriteTimeUtc))
+        {
+            reusedDirectoryCount++;
+            return existingSnapshot;
+        }
+
         var isUnchanged = existingSnapshot != null &&
                           existingSnapshot.Directory?.FullName.Equals(directory.FullName, StringComparison.OrdinalIgnoreCase) == true &&
                           existingSnapshot.LastWriteTimeUtc == currentLastWriteTimeUtc;
@@ -581,8 +617,17 @@ internal sealed class FileSearchService
                 foreach (var childDirectory in directory.EnumerateDirectories("*", SearchOption.TopDirectoryOnly))
                 {
                     if (!ShouldIncludeDirectory(childDirectory))
+                        continue;
+
+                    if (TryReuseCleanTopLevelBucket(
+                            childDirectory,
+                            existingChildrenByPath,
+                            dirtyRootState,
+                            depth,
+                            ref reusedDirectoryCount,
+                            out var reusedChildSnapshot))
                     {
-                        skippedDirectoryCount++;
+                        refreshedChildren.Add(reusedChildSnapshot);
                         continue;
                     }
 
@@ -591,11 +636,12 @@ internal sealed class FileSearchService
                     var refreshedChild = RefreshDirectorySnapshot(
                         childDirectory,
                         existingChildSnapshot,
+                        dirtyRootState,
+                        depth + 1,
                         cancellationToken,
                         ref visitedDirectoryCount,
                         ref rebuiltDirectoryCount,
-                        ref reusedDirectoryCount,
-                        ref skippedDirectoryCount);
+                        ref reusedDirectoryCount);
                     if (refreshedChild != null)
                         refreshedChildren.Add(refreshedChild);
                 }
@@ -623,22 +669,33 @@ internal sealed class FileSearchService
             foreach (var childDirectory in directory.EnumerateDirectories("*", SearchOption.TopDirectoryOnly))
             {
                 if (!ShouldIncludeDirectory(childDirectory))
+                    continue;
+
+                directEntries.Add(CreateIndexedDirectory(childDirectory));
+
+                if (TryReuseCleanTopLevelBucket(
+                        childDirectory,
+                        existingChildrenByPath,
+                        dirtyRootState,
+                        depth,
+                        ref reusedDirectoryCount,
+                        out var reusedChildSnapshot))
                 {
-                    skippedDirectoryCount++;
+                    childSnapshots.Add(reusedChildSnapshot);
                     continue;
                 }
 
-                directEntries.Add(CreateIndexedDirectory(childDirectory));
                 IndexedDirectorySnapshot existingChildSnapshot = null;
                 existingChildrenByPath?.TryGetValue(childDirectory.FullName, out existingChildSnapshot);
                 var refreshedChild = RefreshDirectorySnapshot(
                     childDirectory,
                     existingChildSnapshot,
+                    dirtyRootState,
+                    depth + 1,
                     cancellationToken,
                     ref visitedDirectoryCount,
                     ref rebuiltDirectoryCount,
-                    ref reusedDirectoryCount,
-                    ref skippedDirectoryCount);
+                    ref reusedDirectoryCount);
                 if (refreshedChild != null)
                     childSnapshots.Add(refreshedChild);
             }
@@ -670,8 +727,7 @@ internal sealed class FileSearchService
         IReadOnlyList<IndexedDirectorySnapshot> DirectorySnapshots,
         int VisitedDirectoryCount,
         int RebuiltDirectoryCount,
-        int ReusedDirectoryCount,
-        int SkippedDirectoryCount);
+        int ReusedDirectoryCount);
 
     private sealed record FileSortKey(
         int MatchTier,
@@ -787,9 +843,300 @@ internal sealed class FileSearchService
     internal sealed record FileRefreshMetrics(
         int VisitedDirectoryCount,
         int RebuiltDirectoryCount,
-        int ReusedDirectoryCount,
-        int SkippedDirectoryCount)
+        int ReusedDirectoryCount)
     {
-        public static FileRefreshMetrics Empty { get; } = new(0, 0, 0, 0);
+        public static FileRefreshMetrics Empty { get; } = new(0, 0, 0);
     }
+
+    /// <summary>
+    /// Determines whether an existing snapshot can be reused without even enumerating child directories.
+    /// </summary>
+    /// <remarks>
+    /// Root directories can be reused wholesale when the watcher has not marked any top-level buckets or root entries dirty.
+    /// First-level directories can also be reused wholesale when their bucket has not been marked dirty.
+    /// Deeper levels are handled by normal recursive traversal.
+    /// </remarks>
+    private static bool CanReuseWholeSnapshotWithoutTraversal(
+        DirectoryInfo directory,
+        IndexedDirectorySnapshot existingSnapshot,
+        DirtyRootState dirtyRootState,
+        int depth,
+        DateTime currentLastWriteTimeUtc)
+    {
+        if (existingSnapshot == null ||
+            existingSnapshot.Directory?.FullName.Equals(directory.FullName, StringComparison.OrdinalIgnoreCase) != true ||
+            existingSnapshot.LastWriteTimeUtc != currentLastWriteTimeUtc)
+        {
+            return false;
+        }
+
+        if (depth == 0)
+        {
+            return dirtyRootState is { IsWholeRootDirty: false, AreRootEntriesDirty: false } &&
+                   dirtyRootState.DirtyTopLevelDirectories.Count == 0;
+        }
+
+        if (depth == 1)
+            return dirtyRootState is { IsWholeRootDirty: false } && !dirtyRootState.DirtyTopLevelDirectories.Contains(directory.Name);
+
+        return false;
+    }
+
+    /// <summary>
+    /// Reuses a top-level child snapshot when the watcher says that bucket stayed clean.
+    /// </summary>
+    /// <remarks>
+    /// This is the key optimization for large roots such as a source tree: a build in one repository should not force every sibling repository to be revisited.
+    /// </remarks>
+    private static bool TryReuseCleanTopLevelBucket(
+        DirectoryInfo childDirectory,
+        IReadOnlyDictionary<string, IndexedDirectorySnapshot> existingChildrenByPath,
+        DirtyRootState dirtyRootState,
+        int depth,
+        ref int reusedDirectoryCount,
+        out IndexedDirectorySnapshot reusedChildSnapshot)
+    {
+        reusedChildSnapshot = null;
+        if (depth != 0 ||
+            dirtyRootState is not { IsWholeRootDirty: false } ||
+            dirtyRootState.DirtyTopLevelDirectories.Contains(childDirectory.Name) ||
+            existingChildrenByPath == null ||
+            !existingChildrenByPath.TryGetValue(childDirectory.FullName, out var existingChildSnapshot))
+        {
+            return false;
+        }
+
+        reusedDirectoryCount++;
+        reusedChildSnapshot = existingChildSnapshot;
+        return true;
+    }
+
+    /// <summary>
+    /// Rebuilds the watcher set so it matches the current search roots.
+    /// </summary>
+    /// <remarks>
+    /// A watcher is created per root, not per directory. Dirty tracking is handled by recording the first directory segment beneath that root.
+    /// </remarks>
+    private void ResetWatchers()
+    {
+        lock (m_watchStateLock)
+        {
+            foreach (var rootWatchState in m_rootWatchStates.Values)
+                rootWatchState.Watcher?.Dispose();
+
+            m_rootWatchStates.Clear();
+
+            foreach (var rootDirectory in m_searchRoots.Where(root => root?.Exists() == true))
+            {
+                var normalizedRootPath = NormalizeRootPath(rootDirectory.FullName);
+                m_rootWatchStates[normalizedRootPath] = new RootWatchState(
+                    m_enableWatchers ? CreateWatcher(rootDirectory) : null);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Creates a recursive watcher for one search root.
+    /// </summary>
+    /// <remarks>
+    /// Watcher events are treated as hints only. They do not directly mutate the index; instead they mark buckets dirty so the next refresh can limit its work.
+    /// </remarks>
+    private FileSystemWatcher CreateWatcher(DirectoryInfo rootDirectory)
+    {
+        var watcher = new FileSystemWatcher(rootDirectory.FullName)
+        {
+            IncludeSubdirectories = true,
+            NotifyFilter = NotifyFilters.DirectoryName |
+                           NotifyFilters.FileName
+        };
+
+        watcher.Created += (_, args) => MarkPathDirtyCore(args.FullPath);
+        watcher.Deleted += (_, args) => MarkPathDirtyCore(args.FullPath);
+        watcher.Renamed += (_, args) =>
+        {
+            MarkPathDirtyCore(args.OldFullPath);
+            MarkPathDirtyCore(args.FullPath);
+        };
+        watcher.Error += (_, args) => MarkRootDirtyForWatcherError(rootDirectory.FullName, args.GetException());
+        watcher.EnableRaisingEvents = true;
+        return watcher;
+    }
+
+    /// <summary>
+    /// Captures the current dirty-state hints and clears them for the next refresh cycle.
+    /// </summary>
+    /// <remarks>
+    /// Refresh works against a stable snapshot of watcher state so file events arriving mid-refresh are deferred to the following cycle.
+    /// </remarks>
+    private IReadOnlyDictionary<string, DirtyRootState> CaptureAndClearDirtyRootStates()
+    {
+        lock (m_watchStateLock)
+        {
+            var dirtyRootStates = new Dictionary<string, DirtyRootState>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (rootPath, rootWatchState) in m_rootWatchStates)
+            {
+                dirtyRootStates[rootPath] = new DirtyRootState(
+                    rootWatchState.IsWholeRootDirty,
+                    rootWatchState.AreRootEntriesDirty,
+                    [.. rootWatchState.DirtyTopLevelDirectories]);
+
+                rootWatchState.IsWholeRootDirty = false;
+                rootWatchState.AreRootEntriesDirty = false;
+                rootWatchState.DirtyTopLevelDirectories.Clear();
+            }
+
+            return dirtyRootStates;
+        }
+    }
+
+    /// <summary>
+    /// Marks the affected root bucket for a changed path.
+    /// </summary>
+    /// <remarks>
+    /// Root-level files are tracked separately, while nested changes are collapsed to the first directory segment under the root.
+    /// That keeps the bookkeeping cheap while still avoiding a full-root rebuild for unrelated sibling trees.
+    /// </remarks>
+    private void MarkPathDirtyCore(string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+            return;
+
+        var normalizedPath = NormalizeRootPath(fullPath);
+        lock (m_watchStateLock)
+        {
+            foreach (var (rootPath, rootWatchState) in m_rootWatchStates)
+            {
+                if (!IsPathCoveredByRoot(normalizedPath, rootPath))
+                    continue;
+
+                var relativePath = normalizedPath.Length == rootPath.Length
+                    ? string.Empty
+                    : normalizedPath[(rootPath.Length + 1)..];
+
+                if (string.IsNullOrWhiteSpace(relativePath))
+                {
+                    rootWatchState.AreRootEntriesDirty = true;
+                    return;
+                }
+
+                var firstSeparatorIndex = relativePath.IndexOf(Path.DirectorySeparatorChar);
+                if (firstSeparatorIndex < 0)
+                {
+                    rootWatchState.AreRootEntriesDirty = true;
+                    rootWatchState.DirtyTopLevelDirectories.Add(relativePath);
+                    return;
+                }
+
+                rootWatchState.DirtyTopLevelDirectories.Add(relativePath[..firstSeparatorIndex]);
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Falls back to a full-root refresh when watcher delivery becomes unreliable.
+    /// </summary>
+    /// <remarks>
+    /// File watchers can overflow or error under heavy churn. In that case we stop trusting bucket-level hints for that root until the next refresh rebuilds from disk.
+    /// </remarks>
+    private void MarkRootDirtyForWatcherError(string rootPath, Exception exception)
+    {
+        var normalizedRootPath = NormalizeRootPath(rootPath);
+        lock (m_watchStateLock)
+        {
+            if (m_rootWatchStates.TryGetValue(normalizedRootPath, out var rootWatchState))
+            {
+                rootWatchState.IsWholeRootDirty = true;
+                rootWatchState.AreRootEntriesDirty = true;
+                rootWatchState.DirtyTopLevelDirectories.Clear();
+            }
+        }
+
+        Logger.Instance.Warn($"File watcher fell back to a full refresh for {rootPath}: {exception?.Message}");
+    }
+
+    private static string BuildDirtyStateSummary(IReadOnlyDictionary<string, DirtyRootState> dirtyRootStates)
+    {
+        if (dirtyRootStates == null || dirtyRootStates.Count == 0)
+            return "File watcher hints: no roots are being tracked.";
+
+        var trackedRootCount = dirtyRootStates.Count;
+        var dirtyRootCount = 0;
+        var fullRootFallbackCount = 0;
+        var dirtySamples = new List<string>();
+
+        foreach (var (rootPath, dirtyRootState) in dirtyRootStates)
+        {
+            if (dirtyRootState == null)
+                continue;
+
+            var hasChanges = dirtyRootState.IsWholeRootDirty ||
+                             dirtyRootState.AreRootEntriesDirty ||
+                             dirtyRootState.DirtyTopLevelDirectories.Count > 0;
+            if (!hasChanges)
+                continue;
+
+            dirtyRootCount++;
+            if (dirtyRootState.IsWholeRootDirty)
+                fullRootFallbackCount++;
+
+            if (dirtySamples.Count >= 3)
+                continue;
+
+            var rootLabel = Path.GetFileName(rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            rootLabel = string.IsNullOrWhiteSpace(rootLabel) ? rootPath : rootLabel;
+
+            if (dirtyRootState.IsWholeRootDirty)
+            {
+                dirtySamples.Add($"{rootLabel} (full refresh)");
+                continue;
+            }
+
+            if (dirtyRootState.AreRootEntriesDirty)
+                dirtySamples.Add($"{rootLabel} (root entries)");
+
+            foreach (var bucketName in dirtyRootState.DirtyTopLevelDirectories.OrderBy(name => name))
+            {
+                if (dirtySamples.Count >= 3)
+                    break;
+
+                dirtySamples.Add($"{rootLabel}/{bucketName}");
+            }
+        }
+
+        if (dirtyRootCount == 0)
+            return $"File watcher hints: {trackedRootCount:N0} roots tracked, no changes flagged.";
+
+        var summary = $"{trackedRootCount:N0} roots tracked, {dirtyRootCount:N0} dirty.";
+        if (fullRootFallbackCount > 0)
+        {
+            summary += $" Full refresh required for {fullRootFallbackCount:N0} root(s) after watcher error.";
+        }
+
+        if (dirtySamples.Count == 0)
+            return $"File watcher hints: {summary}";
+
+        return $"File watcher hints: {summary} Samples: {string.Join(", ", dirtySamples)}.";
+    }
+
+    private sealed class RootWatchState
+    {
+        public RootWatchState(FileSystemWatcher watcher)
+        {
+            Watcher = watcher;
+        }
+
+        public FileSystemWatcher Watcher { get; }
+
+        public bool IsWholeRootDirty { get; set; }
+
+        public bool AreRootEntriesDirty { get; set; }
+
+        public HashSet<string> DirtyTopLevelDirectories { get; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed record DirtyRootState(
+        bool IsWholeRootDirty,
+        bool AreRootEntriesDirty,
+        HashSet<string> DirtyTopLevelDirectories);
 }
