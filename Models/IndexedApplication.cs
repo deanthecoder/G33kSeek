@@ -9,6 +9,7 @@
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 
@@ -55,6 +56,14 @@ internal sealed class IndexedApplication
                 successMessage: $"Launching {DisplayName}."),
             _ => throw new InvalidOperationException($"Indexed application '{DisplayName}' does not have a valid launch target.")
         };
+    }
+
+    public IReadOnlyList<QueryActionDescriptor> CreateSecondaryActions()
+    {
+        if (string.IsNullOrWhiteSpace(LaunchPath))
+            return [];
+
+        return FileSystemResultActionFactory.CreateSecondaryActions(DisplayName, LaunchPath);
     }
 
     private ApplicationLaunchKind ResolveLaunchKind()

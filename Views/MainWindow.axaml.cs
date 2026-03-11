@@ -103,12 +103,47 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void OnResultPointerPressed(object sender, PointerPressedEventArgs e)
+    {
+        var result = TryGetResultFromSource(e.Source);
+        if (result != null)
+            m_viewModel.SelectedResult = result;
+    }
+
+    private async void OnSecondaryActionMenuItemClickAsync(object sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem menuItem ||
+            menuItem.DataContext is not QueryActionDescriptor action)
+        {
+            return;
+        }
+
+        await ExecuteActionAsync(action);
+        e.Handled = true;
+    }
+
     private async Task ExecuteSelectedResultAsync()
     {
         if (m_viewModel.SelectedResult == null)
             return;
 
         var executionResult = await QueryExecutionService.ExecuteAsync(m_viewModel.SelectedResult, this);
+        ApplyExecutionResult(executionResult);
+    }
+
+    private async Task ExecuteActionAsync(QueryActionDescriptor action)
+    {
+        if (action == null)
+            return;
+
+        var executionResult = await QueryExecutionService.ExecuteAsync(
+            new QueryResult(string.Empty, primaryAction: action),
+            this);
+        ApplyExecutionResult(executionResult);
+    }
+
+    private void ApplyExecutionResult(QueryExecutionResult executionResult)
+    {
         if (!string.IsNullOrWhiteSpace(executionResult.StatusText))
             m_viewModel.StatusText = executionResult.StatusText;
 

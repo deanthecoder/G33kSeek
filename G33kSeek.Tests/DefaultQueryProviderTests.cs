@@ -57,6 +57,7 @@ public class DefaultQueryProviderTests
         Assert.That(response.Results, Has.Count.EqualTo(1));
         Assert.That(response.Results[0].Title, Is.EqualTo("Safari"));
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+        Assert.That(response.Results[0].SecondaryActions.Select(action => action.Kind), Is.EqualTo(new[] { QueryActionKind.RevealPath, QueryActionKind.CopyText }));
     }
 
     [Test]
@@ -114,6 +115,7 @@ public class DefaultQueryProviderTests
         Assert.That(response.Results, Has.Count.EqualTo(1));
         Assert.That(response.Results[0].Title, Is.EqualTo("invoice.pdf"));
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
+        Assert.That(response.Results[0].SecondaryActions.Select(action => action.Kind), Is.EqualTo(new[] { QueryActionKind.RevealPath, QueryActionKind.CopyText }));
         Assert.That(response.StatusText, Is.EqualTo("Found 1 item."));
     }
 
@@ -253,6 +255,7 @@ public class DefaultQueryProviderTests
         Assert.That(response.Results[0].TrailingText, Is.EqualTo("File"));
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.OpenPath));
         Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo(file.FullName));
+        Assert.That(response.Results[0].SecondaryActions.Select(action => action.Kind), Is.EqualTo(new[] { QueryActionKind.RevealPath, QueryActionKind.CopyText }));
     }
 
     [Test]

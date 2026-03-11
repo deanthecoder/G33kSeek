@@ -21,6 +21,7 @@ public enum QueryActionKind
     None,
     CopyText,
     OpenPath,
+    RevealPath,
     OpenUri,
     RunProcess,
     AddSearchRoot,

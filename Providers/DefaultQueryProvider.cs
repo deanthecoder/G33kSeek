@@ -177,19 +177,15 @@ public sealed class DefaultQueryProvider : IQueryProvider
 
         if (candidate.Exists())
         {
-            response = new QueryResponse(
-                [
-                    new QueryResult(
-                        candidate.Name,
-                        candidatePath,
-                        "File",
-                        new QueryActionDescriptor(
-                            QueryActionKind.OpenPath,
-                            candidatePath,
-                            successMessage: $"Opening {candidate.Name}."))
-                ],
-                "Path ready. Press Enter to open it.");
-            return true;
+        response = new QueryResponse(
+            [
+                CreateExistingFileSystemResult(
+                    candidate.Name,
+                    candidatePath,
+                    "File")
+            ],
+            "Path ready. Press Enter to open it.");
+        return true;
         }
 
         candidate = new DirectoryInfo(candidatePath);
@@ -197,14 +193,10 @@ public sealed class DefaultQueryProvider : IQueryProvider
         {
             response = new QueryResponse(
                 [
-                    new QueryResult(
+                    CreateExistingFileSystemResult(
                         candidate.Name,
                         candidatePath,
-                        "Folder",
-                        new QueryActionDescriptor(
-                            QueryActionKind.OpenPath,
-                            candidatePath,
-                            successMessage: $"Opening {candidate.Name}."))
+                        "Folder")
                 ],
                 "Folder ready. Press Enter to open it.");
             return true;
@@ -353,12 +345,35 @@ public sealed class DefaultQueryProvider : IQueryProvider
 
     private static QueryResult CreateApplicationResult(IndexedApplication app)
     {
-        return new QueryResult(app.DisplayName, app.Subtitle, "App", app.CreatePrimaryAction());
+        return new QueryResult(
+            app.DisplayName,
+            app.Subtitle,
+            "App",
+            app.CreatePrimaryAction(),
+            app.CreateSecondaryActions());
     }
 
     private static QueryResult CreateFileResult(IndexedFile file)
     {
-        return new QueryResult(file.DisplayName, file.Subtitle, file.IsDirectory ? "Folder" : "File", file.CreatePrimaryAction());
+        return new QueryResult(
+            file.DisplayName,
+            file.Subtitle,
+            file.IsDirectory ? "Folder" : "File",
+            file.CreatePrimaryAction(),
+            file.CreateSecondaryActions());
+    }
+
+    private static QueryResult CreateExistingFileSystemResult(string title, string fullPath, string trailingText)
+    {
+        return new QueryResult(
+            title,
+            fullPath,
+            trailingText,
+            new QueryActionDescriptor(
+                QueryActionKind.OpenPath,
+                fullPath,
+                successMessage: $"Opening {title}."),
+            FileSystemResultActionFactory.CreateSecondaryActions(title, fullPath));
     }
 
     private static string BuildSearchStatusText(int applicationCount, int visibleFileCount, int totalFileCount)

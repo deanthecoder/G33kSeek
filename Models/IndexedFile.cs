@@ -9,6 +9,7 @@
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 
@@ -67,5 +68,10 @@ internal sealed class IndexedFile
             QueryActionKind.OpenPath,
             File.FullName,
             successMessage: $"Opening {DisplayName}.");
+    }
+
+    public IReadOnlyList<QueryActionDescriptor> CreateSecondaryActions()
+    {
+        return FileSystemResultActionFactory.CreateSecondaryActions(DisplayName, FullPath);
     }
 }

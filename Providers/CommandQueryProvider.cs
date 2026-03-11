@@ -96,7 +96,7 @@ public sealed class CommandQueryProvider : IQueryProvider
     }
 
     private static QueryResult CreateQueryResult(CommandDefinition definition) =>
-        definition.CreateQueryResult();
+        definition.ResultFactory();
 
     private QueryResult CreateGuidResult()
     {
@@ -255,7 +255,7 @@ public sealed class CommandQueryProvider : IQueryProvider
         {
             Name = name ?? throw new ArgumentNullException(nameof(name));
             _ = description ?? throw new ArgumentNullException(nameof(description));
-            CreateQueryResult = createResult ?? throw new ArgumentNullException(nameof(createResult));
+            ResultFactory = createResult ?? throw new ArgumentNullException(nameof(createResult));
         }
 
         public CommandDefinition(string name, string description, string executable, string arguments, string successMessage)
@@ -277,7 +277,7 @@ public sealed class CommandQueryProvider : IQueryProvider
 
         public string Name { get; }
 
-        public Func<QueryResult> CreateQueryResult { get; }
+        public Func<QueryResult> ResultFactory { get; }
     }
 
     private static IReadOnlyList<string> GetLocalIpAddresses()

@@ -25,4 +25,15 @@ public class QueryResultTests
         Assert.That(result.TrailingText, Is.EqualTo("Enter copies"));
         Assert.That(result.PrimaryAction, Is.SameAs(action));
     }
+
+    [Test]
+    public void ConstructorAssignsSecondaryActions()
+    {
+        var secondaryAction = new QueryActionDescriptor(QueryActionKind.RevealPath, "c:\\temp\\file.txt", displayText: "Reveal in Explorer");
+        var result = new QueryResult("42", secondaryActions: [secondaryAction]);
+
+        Assert.That(result.SecondaryActions, Has.Count.EqualTo(1));
+        Assert.That(result.SecondaryActions[0], Is.SameAs(secondaryAction));
+        Assert.That(result.HasSecondaryActions, Is.True);
+    }
 }

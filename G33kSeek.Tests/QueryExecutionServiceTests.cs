@@ -23,6 +23,8 @@ public class QueryExecutionServiceTests
     {
         QueryExecutionService.FileOpener = file => file.OpenWithDefaultViewer();
         QueryExecutionService.DirectoryOpener = directory => directory.Explore();
+        QueryExecutionService.FileRevealer = file => file.Explore();
+        QueryExecutionService.DirectoryRevealer = directory => directory.Explore();
         QueryExecutionService.UriOpener = uri => uri.Open();
         QueryExecutionService.ProcessStarter = processStartInfo => Process.Start(processStartInfo);
         QueryExecutionService.SearchRootPicker = _ => Task.FromResult<DirectoryInfo>(null);
@@ -70,6 +72,48 @@ public class QueryExecutionServiceTests
 
         Assert.That(result.IsSuccess, Is.True);
         Assert.That(openedFile?.FullName, Is.EqualTo(reportFile.FullName));
+    }
+
+    [Test]
+    public async Task ExecuteAsyncUsesFileRevealerForFilePaths()
+    {
+        using var tempDirectory = new TempDirectory();
+        var reportFile = tempDirectory.GetFile("report.txt");
+        reportFile.WriteAllText("report");
+        FileInfo revealedFile = null;
+
+        QueryExecutionService.FileRevealer = file => revealedFile = file;
+        QueryExecutionService.DirectoryRevealer = _ => Assert.Fail("Directory revealer should not be used for files.");
+
+        var result = await QueryExecutionService.ExecuteAsync(
+            new QueryResult(
+                "report.txt",
+                primaryAction: new QueryActionDescriptor(QueryActionKind.RevealPath, reportFile.FullName)),
+            null);
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(revealedFile?.FullName, Is.EqualTo(reportFile.FullName));
+    }
+
+    [Test]
+    public async Task ExecuteAsyncUsesDirectoryRevealerForDirectoryPaths()
+    {
+        using var tempDirectory = new TempDirectory();
+        var reportsDirectory = tempDirectory.GetDir("Reports");
+        reportsDirectory.Create();
+        DirectoryInfo revealedDirectory = null;
+
+        QueryExecutionService.DirectoryRevealer = directory => revealedDirectory = directory;
+        QueryExecutionService.FileRevealer = _ => Assert.Fail("File revealer should not be used for directories.");
+
+        var result = await QueryExecutionService.ExecuteAsync(
+            new QueryResult(
+                "Reports",
+                primaryAction: new QueryActionDescriptor(QueryActionKind.RevealPath, reportsDirectory.FullName)),
+            null);
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(revealedDirectory?.FullName, Is.EqualTo(reportsDirectory.FullName));
     }
 
     [Test]

@@ -8,6 +8,9 @@
 // 
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
+using System.Collections.Generic;
+using System.Linq;
+
 namespace G33kSeek.Models;
 
 /// <summary>
@@ -22,12 +25,14 @@ public sealed class QueryResult
         string title,
         string subtitle = null,
         string trailingText = null,
-        QueryActionDescriptor primaryAction = null)
+        QueryActionDescriptor primaryAction = null,
+        IEnumerable<QueryActionDescriptor> secondaryActions = null)
     {
         Title = title ?? string.Empty;
         Subtitle = subtitle ?? string.Empty;
         TrailingText = trailingText ?? string.Empty;
         PrimaryAction = primaryAction;
+        SecondaryActions = secondaryActions?.Where(action => action != null).ToArray() ?? [];
     }
 
     public string Title { get; }
@@ -37,4 +42,8 @@ public sealed class QueryResult
     public string TrailingText { get; }
 
     public QueryActionDescriptor PrimaryAction { get; }
+
+    public IReadOnlyList<QueryActionDescriptor> SecondaryActions { get; }
+
+    public bool HasSecondaryActions => SecondaryActions.Count > 0;
 }

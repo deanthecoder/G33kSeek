@@ -71,8 +71,6 @@ public class App : Application
             providers.Add(new DefaultQueryProvider(applicationSearchService, m_fileSearchService));
             providers.Add(new CalculatorQueryProvider());
             providers.Add(new HelpQueryProvider(GetHelpEntries));
-            providers.Add(new PlaceholderQueryProvider("??", "Content search", "File content search will reuse the proven G33kShell grep path.", "??TODO"));
-            providers.Add(new PlaceholderQueryProvider("@", "AI prompt", "AI provider integration comes after the local query engine.", "@summarise this text"));
             providers.Add(new CommandQueryProvider());
             QueryExecutionService.SearchRootAdder = m_fileSearchService.AddSearchRootAsync;
             QueryExecutionService.IndexRefresher = indexRefreshCoordinator.RefreshAllAsync;

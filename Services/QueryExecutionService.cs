@@ -30,6 +30,8 @@ public static class QueryExecutionService
 {
     internal static Action<FileInfo> FileOpener { get; set; } = file => file.OpenWithDefaultViewer();
     internal static Action<DirectoryInfo> DirectoryOpener { get; set; } = directory => directory.Explore();
+    internal static Action<FileInfo> FileRevealer { get; set; } = file => file.Explore();
+    internal static Action<DirectoryInfo> DirectoryRevealer { get; set; } = directory => directory.Explore();
     internal static Action<Uri> UriOpener { get; set; } = uri => uri.Open();
     internal static Action<ProcessStartInfo> ProcessStarter { get; set; } = processStartInfo => Process.Start(processStartInfo);
     internal static Func<CancellationToken, Task<DirectoryInfo>> SearchRootPicker { get; set; } = PickSearchRootAsync;
@@ -73,6 +75,21 @@ public static class QueryExecutionService
                 if (Directory.Exists(action.Payload))
                 {
                     DirectoryOpener(new DirectoryInfo(action.Payload));
+                    return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
+                }
+
+                return new QueryExecutionResult(false, "The target path no longer exists.");
+
+            case QueryActionKind.RevealPath:
+                if (File.Exists(action.Payload))
+                {
+                    FileRevealer(new FileInfo(action.Payload));
+                    return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
+                }
+
+                if (Directory.Exists(action.Payload))
+                {
+                    DirectoryRevealer(new DirectoryInfo(action.Payload));
                     return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
                 }
 

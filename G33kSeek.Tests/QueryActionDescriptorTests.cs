@@ -29,5 +29,18 @@ public class QueryActionDescriptorTests
         Assert.That(descriptor.Arguments, Is.EqualTo("--value"));
         Assert.That(descriptor.SuccessMessage, Is.EqualTo("Copied."));
         Assert.That(descriptor.ShouldHideLauncher, Is.False);
+        Assert.That(descriptor.DisplayText, Is.EqualTo(string.Empty));
+    }
+
+    [Test]
+    public void ConstructorAssignsDisplayText()
+    {
+        var descriptor = new QueryActionDescriptor(
+            QueryActionKind.RevealPath,
+            "c:\\temp\\file.txt",
+            successMessage: "Revealed.",
+            displayText: "Reveal in Explorer");
+
+        Assert.That(descriptor.DisplayText, Is.EqualTo("Reveal in Explorer"));
     }
 }
