@@ -52,6 +52,7 @@ internal sealed class FileSearchService : SearchServiceBase
     private readonly object m_searchCacheLock = new();
     private readonly object m_watchStateLock = new();
     private readonly Dictionary<string, RootWatchState> m_rootWatchStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Task m_cacheInitializationTask;
     private bool m_hasExplicitSearchRoots;
     private List<IndexedDirectorySnapshot> m_cachedDirectorySnapshots;
     private List<IndexedFile> m_cachedFiles;
@@ -61,14 +62,13 @@ internal sealed class FileSearchService : SearchServiceBase
     private IReadOnlyList<IndexedFile> m_lastSearchMatches = [];
 
     public FileSearchService()
-        : this(new FileSearchSettings(), null, null)
+        : this(new FileSearchSettings(), null)
     {
     }
 
     private FileSearchService(
         FileSearchSettings settings,
         IEnumerable<DirectoryInfo> searchRoots,
-        IEnumerable<IndexedFile> cachedFiles,
         Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> discoverFilesOverride = null)
     {
         m_settings = settings;
@@ -84,11 +84,12 @@ internal sealed class FileSearchService : SearchServiceBase
             Logger.Instance.Info($"Discarding file index cache format v{settings.CacheFormatVersion:N0}; expected v{CurrentCacheFormatVersion:N0}.");
         }
 
-        m_cachedDirectorySnapshots = PrepareDirectorySnapshots(isCompatibleCache ? settings.DirectorySnapshots : null);
-        m_cachedFiles = PrepareIndexedFiles(cachedFiles) is { Count: > 0 } preparedCachedFiles
-            ? preparedCachedFiles
-            : FlattenSnapshots(m_cachedDirectorySnapshots);
+        m_cachedDirectorySnapshots = [];
+        m_cachedFiles = [];
         m_lastRefreshUtc = isCompatibleCache ? settings.LastFileRefreshUtc : DateTime.MinValue;
+        m_cacheInitializationTask = isCompatibleCache
+            ? Task.Run(LoadPersistedCache)
+            : Task.CompletedTask;
         ResetWatchers();
     }
 
@@ -110,6 +111,7 @@ internal sealed class FileSearchService : SearchServiceBase
             ? preparedCachedFiles
             : FlattenSnapshots(m_cachedDirectorySnapshots);
         m_lastRefreshUtc = lastRefreshUtc ?? DateTime.MinValue;
+        m_cacheInitializationTask = Task.CompletedTask;
         ResetWatchers();
     }
 
@@ -123,6 +125,8 @@ internal sealed class FileSearchService : SearchServiceBase
         var normalizedQuery = Normalize(query);
         if (string.IsNullOrWhiteSpace(normalizedQuery))
             return new FileSearchResult([], 0);
+
+        await EnsureCacheInitializedAsync(cancellationToken);
 
         if (m_cachedFiles.Count == 0)
             await RefreshAsync(cancellationToken);
@@ -153,10 +157,7 @@ internal sealed class FileSearchService : SearchServiceBase
 
     public Task WarmAsync(CancellationToken cancellationToken = default)
     {
-        if (m_cachedFiles.Count > 0 && DateTime.UtcNow - m_lastRefreshUtc <= RefreshInterval)
-            return Task.CompletedTask;
-
-        return RefreshAsync(cancellationToken);
+        return WarmCoreAsync(cancellationToken);
     }
 
     internal async Task<FileSearchRootAddStatus> AddSearchRootAsync(DirectoryInfo directory, CancellationToken cancellationToken = default)
@@ -164,7 +165,8 @@ internal sealed class FileSearchService : SearchServiceBase
         if (directory == null)
             throw new ArgumentNullException(nameof(directory));
 
-        await RefreshLock.WaitAsync(cancellationToken);
+        await EnsureCacheInitializedAsync(cancellationToken);
+        await m_refreshLock.WaitAsync(cancellationToken);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -185,7 +187,7 @@ internal sealed class FileSearchService : SearchServiceBase
         }
         finally
         {
-            RefreshLock.Release();
+            m_refreshLock.Release();
         }
     }
 
@@ -194,7 +196,8 @@ internal sealed class FileSearchService : SearchServiceBase
 
     private async Task RefreshAsync(CancellationToken cancellationToken, bool forceRefresh = false)
     {
-        await RefreshLock.WaitAsync(cancellationToken);
+        await EnsureCacheInitializedAsync(cancellationToken);
+        await m_refreshLock.WaitAsync(cancellationToken);
         try
         {
             if (!forceRefresh && !NeedsRefresh())
@@ -222,7 +225,7 @@ internal sealed class FileSearchService : SearchServiceBase
         }
         finally
         {
-            RefreshLock.Release();
+            m_refreshLock.Release();
         }
     }
 
@@ -234,6 +237,38 @@ internal sealed class FileSearchService : SearchServiceBase
             m_cachedDirectorySnapshots,
             m_lastRefreshUtc,
             CurrentCacheFormatVersion);
+    }
+
+    private void LoadPersistedCache()
+    {
+        try
+        {
+            var cachedDirectorySnapshots = PrepareDirectorySnapshots(m_settings?.DirectorySnapshots);
+            m_cachedDirectorySnapshots = cachedDirectorySnapshots;
+            m_cachedFiles = FlattenSnapshots(cachedDirectorySnapshots);
+        }
+        catch (Exception ex)
+        {
+            m_cachedDirectorySnapshots = [];
+            m_cachedFiles = [];
+            m_lastRefreshUtc = DateTime.MinValue;
+            Logger.Instance.Exception("Loading cached file index failed.", ex);
+        }
+    }
+
+    private async Task EnsureCacheInitializedAsync(CancellationToken cancellationToken)
+    {
+        await m_cacheInitializationTask.WaitAsync(cancellationToken);
+    }
+
+    private async Task WarmCoreAsync(CancellationToken cancellationToken)
+    {
+        await EnsureCacheInitializedAsync(cancellationToken);
+
+        if (m_cachedFiles.Count > 0 && DateTime.UtcNow - m_lastRefreshUtc <= RefreshInterval)
+            return;
+
+        await RefreshAsync(cancellationToken);
     }
 
     internal static IReadOnlyList<DirectoryInfo> GetDefaultSearchRoots(

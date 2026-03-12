@@ -24,7 +24,7 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal abstract class SearchServiceBase : IDisposable
 {
-    protected readonly SemaphoreSlim RefreshLock = new(1, 1);
+    protected readonly SemaphoreSlim m_refreshLock = new(1, 1);
     private bool m_isRefreshing;
 
     internal bool IsRefreshing => m_isRefreshing;
@@ -33,7 +33,7 @@ internal abstract class SearchServiceBase : IDisposable
 
     public virtual void Dispose()
     {
-        RefreshLock.Dispose();
+        m_refreshLock.Dispose();
     }
 
     protected void SetIsRefreshing(bool isRefreshing)

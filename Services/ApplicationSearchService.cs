@@ -148,7 +148,7 @@ internal sealed class ApplicationSearchService : SearchServiceBase
         if (!IsSupportedPlatform())
             return;
 
-        await RefreshLock.WaitAsync(cancellationToken);
+        await m_refreshLock.WaitAsync(cancellationToken);
         try
         {
             if (!forceRefresh && !NeedsRefresh())
@@ -196,7 +196,7 @@ internal sealed class ApplicationSearchService : SearchServiceBase
         }
         finally
         {
-            RefreshLock.Release();
+            m_refreshLock.Release();
         }
     }
 

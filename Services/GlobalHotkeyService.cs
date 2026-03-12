@@ -32,7 +32,6 @@ public sealed class GlobalHotkeyService : IDisposable
     private const uint WmQuit = 0x0012;
     private const uint PmRemove = 0x0001;
     private const uint ModControl = 0x0002;
-    private const uint ModWin = 0x0008;
     private const uint ModNoRepeat = 0x4000;
     private const uint VkSpace = 0x20;
     private readonly bool m_isWindows;
