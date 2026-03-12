@@ -27,7 +27,7 @@ namespace G33kSeek.Services;
 /// <remarks>
 /// This keeps file search fast by indexing configured roots in the background and serving matches from an in-memory cache.
 /// </remarks>
-internal sealed class FileSearchService : IDisposable
+internal sealed class FileSearchService : SearchServiceBase
 {
     private const int CurrentCacheFormatVersion = 6;
     private const int MaxVisibleResults = 25;
@@ -45,7 +45,6 @@ internal sealed class FileSearchService : IDisposable
         "packages"
     };
 
-    private readonly SemaphoreSlim m_refreshLock = new(1, 1);
     private readonly FileSearchSettings m_settings;
     private readonly List<DirectoryInfo> m_searchRoots;
     private readonly Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> m_discoverFilesOverride;
@@ -57,7 +56,6 @@ internal sealed class FileSearchService : IDisposable
     private List<IndexedDirectorySnapshot> m_cachedDirectorySnapshots;
     private List<IndexedFile> m_cachedFiles;
     private DateTime m_lastRefreshUtc;
-    private bool m_isRefreshing;
     private FileRefreshMetrics m_lastRefreshMetrics = FileRefreshMetrics.Empty;
     private string m_lastSearchQuery = string.Empty;
     private IReadOnlyList<IndexedFile> m_lastSearchMatches = [];
@@ -137,10 +135,6 @@ internal sealed class FileSearchService : IDisposable
         return result;
     }
 
-    internal bool IsRefreshing => m_isRefreshing;
-
-    internal event EventHandler RefreshStateChanged;
-
     internal FileRefreshMetrics LastRefreshMetrics => m_lastRefreshMetrics;
 
     /// <summary>
@@ -149,17 +143,12 @@ internal sealed class FileSearchService : IDisposable
     /// <remarks>
     /// Watchers are optional in tests, but in the real app they need to be torn down on exit so they do not outlive the launcher process.
     /// </remarks>
-    public void Dispose()
+    public override void Dispose()
     {
         lock (m_watchStateLock)
-        {
-            foreach (var rootWatchState in m_rootWatchStates.Values)
-                rootWatchState.Watcher?.Dispose();
+            DisposeWatchers(m_rootWatchStates, rootWatchState => rootWatchState.Watcher);
 
-            m_rootWatchStates.Clear();
-        }
-
-        m_refreshLock.Dispose();
+        base.Dispose();
     }
 
     public Task WarmAsync(CancellationToken cancellationToken = default)
@@ -175,7 +164,7 @@ internal sealed class FileSearchService : IDisposable
         if (directory == null)
             throw new ArgumentNullException(nameof(directory));
 
-        await m_refreshLock.WaitAsync(cancellationToken);
+        await RefreshLock.WaitAsync(cancellationToken);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -196,7 +185,7 @@ internal sealed class FileSearchService : IDisposable
         }
         finally
         {
-            m_refreshLock.Release();
+            RefreshLock.Release();
         }
     }
 
@@ -205,7 +194,7 @@ internal sealed class FileSearchService : IDisposable
 
     private async Task RefreshAsync(CancellationToken cancellationToken, bool forceRefresh = false)
     {
-        await m_refreshLock.WaitAsync(cancellationToken);
+        await RefreshLock.WaitAsync(cancellationToken);
         try
         {
             if (!forceRefresh && !NeedsRefresh())
@@ -233,7 +222,7 @@ internal sealed class FileSearchService : IDisposable
         }
         finally
         {
-            m_refreshLock.Release();
+            RefreshLock.Release();
         }
     }
 
@@ -382,15 +371,6 @@ internal sealed class FileSearchService : IDisposable
         return m_lastRefreshUtc == DateTime.MinValue || DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval;
     }
 
-    private void SetIsRefreshing(bool isRefreshing)
-    {
-        if (m_isRefreshing == isRefreshing)
-            return;
-
-        m_isRefreshing = isRefreshing;
-        RefreshStateChanged?.Invoke(this, EventArgs.Empty);
-    }
-
     private void ReplaceSearchRoots(IEnumerable<DirectoryInfo> directories)
     {
         m_searchRoots.Clear();
@@ -425,21 +405,6 @@ internal sealed class FileSearchService : IDisposable
     private static bool IsCoveredByExistingRoot(DirectoryInfo candidateRoot, IEnumerable<DirectoryInfo> existingRoots)
     {
         return existingRoots.Any(existingRoot => IsPathCoveredByRoot(candidateRoot.FullName, existingRoot.FullName));
-    }
-
-    private static bool IsPathCoveredByRoot(string candidatePath, string rootPath)
-    {
-        var normalizedCandidatePath = NormalizeRootPath(candidatePath);
-        var normalizedRootPath = NormalizeRootPath(rootPath);
-
-        return normalizedCandidatePath.Equals(normalizedRootPath, StringComparison.OrdinalIgnoreCase) ||
-               normalizedCandidatePath.StartsWith($"{normalizedRootPath}{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string NormalizeRootPath(string path)
-    {
-        return Path.GetFullPath(path ?? string.Empty)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     private static FileSearchResult RankMatches(string normalizedQuery, IEnumerable<IndexedFile> files)
@@ -992,10 +957,7 @@ internal sealed class FileSearchService : IDisposable
     {
         lock (m_watchStateLock)
         {
-            foreach (var rootWatchState in m_rootWatchStates.Values)
-                rootWatchState.Watcher?.Dispose();
-
-            m_rootWatchStates.Clear();
+            DisposeWatchers(m_rootWatchStates, rootWatchState => rootWatchState.Watcher);
 
             foreach (var rootDirectory in m_searchRoots.Where(root => root?.Exists() == true))
             {
@@ -1014,24 +976,11 @@ internal sealed class FileSearchService : IDisposable
     /// </remarks>
     private FileSystemWatcher CreateWatcher(DirectoryInfo rootDirectory)
     {
-        var watcher = new FileSystemWatcher(rootDirectory.FullName)
-        {
-            IncludeSubdirectories = true,
-            InternalBufferSize = WatcherBufferSize,
-            NotifyFilter = NotifyFilters.DirectoryName |
-                           NotifyFilters.FileName
-        };
-
-        watcher.Created += (_, args) => MarkPathDirtyCore(args.FullPath);
-        watcher.Deleted += (_, args) => MarkPathDirtyCore(args.FullPath);
-        watcher.Renamed += (_, args) =>
-        {
-            MarkPathDirtyCore(args.OldFullPath);
-            MarkPathDirtyCore(args.FullPath);
-        };
-        watcher.Error += (_, args) => MarkRootDirtyForWatcherError(rootDirectory.FullName, args.GetException());
-        watcher.EnableRaisingEvents = true;
-        return watcher;
+        return CreateWatcher(
+            rootDirectory,
+            WatcherBufferSize,
+            MarkPathDirtyCore,
+            exception => MarkRootDirtyForWatcherError(rootDirectory.FullName, exception));
     }
 
     /// <summary>

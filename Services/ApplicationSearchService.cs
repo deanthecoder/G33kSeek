@@ -28,13 +28,12 @@ namespace G33kSeek.Services;
 /// <remarks>
 /// This keeps application search fast by scanning macOS and Windows application sources in the background and serving matches from cached entries.
 /// </remarks>
-internal sealed class ApplicationSearchService : IDisposable
+internal sealed class ApplicationSearchService : SearchServiceBase
 {
     private const int WatcherBufferSize = 64 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan FullRefreshInterval = TimeSpan.FromHours(1);
 
-    private readonly SemaphoreSlim m_refreshLock = new(1, 1);
     private readonly ApplicationSearchSettings m_settings;
     private readonly bool m_isMacOS;
     private readonly bool m_isWindows;
@@ -48,7 +47,6 @@ internal sealed class ApplicationSearchService : IDisposable
     private List<IndexedApplication> m_cachedApplications;
     private DateTime m_lastRefreshUtc;
     private DateTime m_lastFullRefreshUtc;
-    private bool m_isRefreshing;
 
     public ApplicationSearchService()
         : this(new ApplicationSearchSettings(), null, null, OperatingSystem.IsMacOS(), OperatingSystem.IsWindows(), null)
@@ -123,21 +121,12 @@ internal sealed class ApplicationSearchService : IDisposable
         return RankMatches(query, m_cachedApplications);
     }
 
-    internal bool IsRefreshing => m_isRefreshing;
-
-    internal event EventHandler RefreshStateChanged;
-
-    public void Dispose()
+    public override void Dispose()
     {
         lock (m_watchStateLock)
-        {
-            foreach (var rootWatchState in m_rootWatchStates.Values)
-                rootWatchState.Watcher?.Dispose();
+            DisposeWatchers(m_rootWatchStates, rootWatchState => rootWatchState.Watcher);
 
-            m_rootWatchStates.Clear();
-        }
-
-        m_refreshLock.Dispose();
+        base.Dispose();
     }
 
     public Task WarmAsync(CancellationToken cancellationToken = default)
@@ -159,7 +148,7 @@ internal sealed class ApplicationSearchService : IDisposable
         if (!IsSupportedPlatform())
             return;
 
-        await m_refreshLock.WaitAsync(cancellationToken);
+        await RefreshLock.WaitAsync(cancellationToken);
         try
         {
             if (!forceRefresh && !NeedsRefresh())
@@ -207,7 +196,7 @@ internal sealed class ApplicationSearchService : IDisposable
         }
         finally
         {
-            m_refreshLock.Release();
+            RefreshLock.Release();
         }
     }
 
@@ -297,15 +286,6 @@ internal sealed class ApplicationSearchService : IDisposable
             return true;
 
         return dirtyRootStates.Any(pair => pair.Value?.IsDirty == true);
-    }
-
-    private void SetIsRefreshing(bool isRefreshing)
-    {
-        if (m_isRefreshing == isRefreshing)
-            return;
-
-        m_isRefreshing = isRefreshing;
-        RefreshStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private IReadOnlyList<IndexedApplication> DiscoverMacApplications()
@@ -529,10 +509,7 @@ internal sealed class ApplicationSearchService : IDisposable
     {
         lock (m_watchStateLock)
         {
-            foreach (var rootWatchState in m_rootWatchStates.Values)
-                rootWatchState.Watcher?.Dispose();
-
-            m_rootWatchStates.Clear();
+            DisposeWatchers(m_rootWatchStates, rootWatchState => rootWatchState.Watcher);
 
             foreach (var rootDirectory in GetWatchedRoots().Where(root => root?.Exists() == true))
             {
@@ -545,24 +522,11 @@ internal sealed class ApplicationSearchService : IDisposable
 
     private FileSystemWatcher CreateWatcher(DirectoryInfo rootDirectory)
     {
-        var watcher = new FileSystemWatcher(rootDirectory.FullName)
-        {
-            IncludeSubdirectories = true,
-            InternalBufferSize = WatcherBufferSize,
-            NotifyFilter = NotifyFilters.DirectoryName |
-                           NotifyFilters.FileName
-        };
-
-        watcher.Created += (_, args) => MarkPathDirtyCore(args.FullPath);
-        watcher.Deleted += (_, args) => MarkPathDirtyCore(args.FullPath);
-        watcher.Renamed += (_, args) =>
-        {
-            MarkPathDirtyCore(args.OldFullPath);
-            MarkPathDirtyCore(args.FullPath);
-        };
-        watcher.Error += (_, args) => MarkAllRootsDirty(args.GetException());
-        watcher.EnableRaisingEvents = true;
-        return watcher;
+        return CreateWatcher(
+            rootDirectory,
+            WatcherBufferSize,
+            MarkPathDirtyCore,
+            MarkAllRootsDirty);
     }
 
     private IReadOnlyDictionary<string, DirtyRootState> CaptureAndClearDirtyRootStates()
@@ -629,21 +593,6 @@ internal sealed class ApplicationSearchService : IDisposable
         return dirtyRoots.Length == 0
             ? $"Application watcher hints: {dirtyRootStates.Count:N0} roots tracked, {dirtyRootCount:N0} dirty."
             : $"Application watcher hints: {dirtyRootStates.Count:N0} roots tracked, {dirtyRootCount:N0} dirty. Samples: {string.Join(", ", dirtyRoots)}.";
-    }
-
-    private static bool IsPathCoveredByRoot(string candidatePath, string rootPath)
-    {
-        var normalizedCandidatePath = NormalizeRootPath(candidatePath);
-        var normalizedRootPath = NormalizeRootPath(rootPath);
-
-        return normalizedCandidatePath.Equals(normalizedRootPath, StringComparison.OrdinalIgnoreCase) ||
-               normalizedCandidatePath.StartsWith($"{normalizedRootPath}{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string NormalizeRootPath(string path)
-    {
-        return Path.GetFullPath(path ?? string.Empty)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
     internal sealed record WindowsStartApp(string Name, string AppId);
