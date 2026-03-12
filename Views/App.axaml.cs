@@ -25,6 +25,7 @@ namespace G33kSeek.Views;
 
 public class App : Application
 {
+    private ApplicationSearchService m_applicationSearchService;
     private FileSearchService m_fileSearchService;
     private GlobalHotkeyService m_globalHotkeyService;
     private TrayIconService m_trayIconService;
@@ -38,9 +39,9 @@ public class App : Application
             Logger.Instance.SysInfo();
             Logger.Instance.Info("Starting G33kSeek.");
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            var applicationSearchService = new ApplicationSearchService();
+            m_applicationSearchService = new ApplicationSearchService();
             m_fileSearchService = new FileSearchService();
-            var indexRefreshCoordinator = new IndexRefreshCoordinator(applicationSearchService, m_fileSearchService);
+            var indexRefreshCoordinator = new IndexRefreshCoordinator(m_applicationSearchService, m_fileSearchService);
 
             List<QueryProvider> providers = [];
             var supplementalHelpEntries = new[]
@@ -68,7 +69,7 @@ public class App : Application
                     .Concat(supplementalHelpEntries)
                     .ToArray();
 
-            providers.Add(new DefaultQueryProvider(applicationSearchService, m_fileSearchService));
+            providers.Add(new DefaultQueryProvider(m_applicationSearchService, m_fileSearchService));
             providers.Add(new CalculatorQueryProvider());
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new CommandQueryProvider());
@@ -99,6 +100,7 @@ public class App : Application
     private void Desktop_OnExit(object sender, ControlledApplicationLifetimeExitEventArgs e)
     {
         m_globalHotkeyService?.Dispose();
+        m_applicationSearchService?.Dispose();
         m_fileSearchService?.Dispose();
         m_trayIconService?.Dispose();
     }

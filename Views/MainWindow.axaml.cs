@@ -201,6 +201,8 @@ public partial class MainWindow : Window
         Dispatcher.UIThread.Post(FocusSearchTextBox, DispatcherPriority.Input);
         DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(40));
         DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(120));
+        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(250));
+        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(500));
     }
 
     private void FocusSearchTextBox()

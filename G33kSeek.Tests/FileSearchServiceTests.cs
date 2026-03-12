@@ -386,6 +386,34 @@ public class FileSearchServiceTests
         Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.GreaterThan(0));
     }
 
+    [Test]
+    public async Task RefreshNowAsyncIgnoresDirtyPathsInsideExcludedDirectories()
+    {
+        using var tempDirectory = new TempDirectory();
+        var sourceDirectory = tempDirectory.GetDir("Source");
+        var repoDirectory = sourceDirectory.GetDir("Repo");
+        var srcDirectory = repoDirectory.GetDir("src");
+        var objDirectory = repoDirectory.GetDir("obj");
+        srcDirectory.Create();
+        objDirectory.Create();
+        srcDirectory.GetFile("main.cs").WriteAllText("class Program {}");
+        var service = new FileSearchService([sourceDirectory], [], DateTime.MinValue);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+
+        Thread.Sleep(1100);
+        var ignoredFile = objDirectory.GetFile("temp.obj");
+        ignoredFile.WriteAllText("ignored");
+        service.MarkPathDirty(ignoredFile.FullName);
+
+        await service.RefreshNowAsync(CancellationToken.None);
+        var results = await service.SearchAsync("temp.obj", CancellationToken.None);
+
+        Assert.That(results.VisibleFiles, Is.Empty);
+        Assert.That(service.LastRefreshMetrics.RebuiltDirectoryCount, Is.EqualTo(0));
+        Assert.That(service.LastRefreshMetrics.ReusedDirectoryCount, Is.EqualTo(1));
+    }
+
     private static string CreateRootedPath(params string[] segments)
     {
         var root = Path.GetPathRoot(Environment.CurrentDirectory) ?? Path.DirectorySeparatorChar.ToString();

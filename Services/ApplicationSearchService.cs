@@ -28,9 +28,11 @@ namespace G33kSeek.Services;
 /// <remarks>
 /// This keeps application search fast by scanning macOS and Windows application sources in the background and serving matches from cached entries.
 /// </remarks>
-internal sealed class ApplicationSearchService
+internal sealed class ApplicationSearchService : IDisposable
 {
+    private const int WatcherBufferSize = 64 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan FullRefreshInterval = TimeSpan.FromHours(1);
 
     private readonly SemaphoreSlim m_refreshLock = new(1, 1);
     private readonly ApplicationSearchSettings m_settings;
@@ -38,10 +40,14 @@ internal sealed class ApplicationSearchService
     private readonly bool m_isWindows;
     private readonly Func<IReadOnlyList<WindowsStartApp>> m_windowsStartAppsAccessor;
     private readonly Func<IReadOnlyList<IndexedApplication>> m_discoverApplicationsOverride;
+    private readonly bool m_enableWatchers;
+    private readonly object m_watchStateLock = new();
+    private readonly Dictionary<string, RootWatchState> m_rootWatchStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly IReadOnlyList<DirectoryInfo> m_macApplicationRoots;
     private readonly IReadOnlyList<DirectoryInfo> m_windowsApplicationRoots;
     private List<IndexedApplication> m_cachedApplications;
     private DateTime m_lastRefreshUtc;
+    private DateTime m_lastFullRefreshUtc;
     private bool m_isRefreshing;
 
     public ApplicationSearchService()
@@ -63,12 +69,15 @@ internal sealed class ApplicationSearchService
         m_isWindows = isWindows;
         m_windowsStartAppsAccessor = windowsStartAppsAccessor ?? GetWindowsStartApps;
         m_discoverApplicationsOverride = discoverApplicationsOverride;
+        m_enableWatchers = true;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ??
                                 GetConfiguredOrDefaultMacRoots(settings);
         m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ??
                                     GetConfiguredOrDefaultWindowsRoots(settings);
         m_cachedApplications = settings?.CachedApplications?.ToList() ?? [];
         m_lastRefreshUtc = settings?.LastApplicationRefreshUtc ?? DateTime.MinValue;
+        m_lastFullRefreshUtc = m_lastRefreshUtc;
+        ResetWatchers();
     }
 
     internal ApplicationSearchService(
@@ -79,17 +88,21 @@ internal sealed class ApplicationSearchService
         bool isWindows,
         DateTime? lastRefreshUtc = null,
         Func<IReadOnlyList<WindowsStartApp>> windowsStartAppsAccessor = null,
-        Func<IReadOnlyList<IndexedApplication>> discoverApplicationsOverride = null)
+        Func<IReadOnlyList<IndexedApplication>> discoverApplicationsOverride = null,
+        bool enableWatchers = false)
     {
         m_settings = null;
         m_isMacOS = isMacOS;
         m_isWindows = isWindows;
         m_windowsStartAppsAccessor = windowsStartAppsAccessor ?? GetWindowsStartApps;
         m_discoverApplicationsOverride = discoverApplicationsOverride;
+        m_enableWatchers = enableWatchers;
         m_macApplicationRoots = macApplicationRoots?.ToArray() ?? [];
         m_windowsApplicationRoots = windowsApplicationRoots?.ToArray() ?? [];
         m_cachedApplications = cachedApplications?.ToList() ?? [];
         m_lastRefreshUtc = lastRefreshUtc ?? DateTime.MinValue;
+        m_lastFullRefreshUtc = m_lastRefreshUtc;
+        ResetWatchers();
     }
 
     public async Task<IReadOnlyList<IndexedApplication>> SearchAsync(string query, CancellationToken cancellationToken)
@@ -113,6 +126,19 @@ internal sealed class ApplicationSearchService
     internal bool IsRefreshing => m_isRefreshing;
 
     internal event EventHandler RefreshStateChanged;
+
+    public void Dispose()
+    {
+        lock (m_watchStateLock)
+        {
+            foreach (var rootWatchState in m_rootWatchStates.Values)
+                rootWatchState.Watcher?.Dispose();
+
+            m_rootWatchStates.Clear();
+        }
+
+        m_refreshLock.Dispose();
+    }
 
     public Task WarmAsync(CancellationToken cancellationToken = default)
     {
@@ -145,9 +171,22 @@ internal sealed class ApplicationSearchService
                 cancellationToken.ThrowIfCancellationRequested();
                 var stopwatch = Stopwatch.StartNew();
                 Logger.Instance.Info($"Refreshing application index across {(m_isMacOS ? m_macApplicationRoots.Count : m_windowsApplicationRoots.Count)} root(s).");
+                var dirtyRootStates = CaptureAndClearDirtyRootStates();
+                Logger.Instance.Info(BuildDirtyStateSummary(dirtyRootStates));
+
+                if (!forceRefresh &&
+                    m_cachedApplications.Count > 0 &&
+                    !ShouldPerformFullRefresh(dirtyRootStates))
+                {
+                    m_lastRefreshUtc = DateTime.UtcNow;
+                    Logger.Instance.Info($"Application index refresh skipped in {stopwatch.ElapsedMilliseconds:N0} ms. Watcher reported no relevant changes.");
+                    return;
+                }
+
                 var discoveredApplications = await Task.Run(DiscoverApplications, cancellationToken);
                 m_cachedApplications = discoveredApplications.ToList();
                 m_lastRefreshUtc = DateTime.UtcNow;
+                m_lastFullRefreshUtc = m_lastRefreshUtc;
                 SaveIfPersistent();
                 Logger.Instance.Info($"Application index refresh completed in {stopwatch.ElapsedMilliseconds:N0} ms. Indexed {m_cachedApplications.Count:N0} applications.");
             }
@@ -219,6 +258,14 @@ internal sealed class ApplicationSearchService
             .ToArray();
     }
 
+    internal void MarkPathDirty(string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+            throw new ArgumentException("Value cannot be null or whitespace.", nameof(fullPath));
+
+        MarkPathDirtyCore(fullPath);
+    }
+
     private IReadOnlyList<IndexedApplication> DiscoverApplications()
     {
         if (m_discoverApplicationsOverride != null)
@@ -236,6 +283,20 @@ internal sealed class ApplicationSearchService
     private bool NeedsRefresh()
     {
         return m_lastRefreshUtc == DateTime.MinValue || DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval;
+    }
+
+    private bool ShouldPerformFullRefresh(IReadOnlyDictionary<string, DirtyRootState> dirtyRootStates)
+    {
+        if (!m_enableWatchers)
+            return true;
+
+        if (DateTime.UtcNow - m_lastFullRefreshUtc > FullRefreshInterval)
+            return true;
+
+        if (dirtyRootStates == null || dirtyRootStates.Count == 0)
+            return true;
+
+        return dirtyRootStates.Any(pair => pair.Value?.IsDirty == true);
     }
 
     private void SetIsRefreshing(bool isRefreshing)
@@ -455,5 +516,149 @@ internal sealed class ApplicationSearchService
             element.TryGetProperty("AppID", out var appIdElement) ? appIdElement.GetString() : string.Empty);
     }
 
+    private IEnumerable<DirectoryInfo> GetWatchedRoots()
+    {
+        return m_isMacOS
+            ? m_macApplicationRoots
+            : m_isWindows
+                ? m_windowsApplicationRoots
+                : [];
+    }
+
+    private void ResetWatchers()
+    {
+        lock (m_watchStateLock)
+        {
+            foreach (var rootWatchState in m_rootWatchStates.Values)
+                rootWatchState.Watcher?.Dispose();
+
+            m_rootWatchStates.Clear();
+
+            foreach (var rootDirectory in GetWatchedRoots().Where(root => root?.Exists() == true))
+            {
+                var normalizedRootPath = NormalizeRootPath(rootDirectory.FullName);
+                m_rootWatchStates[normalizedRootPath] = new RootWatchState(
+                    m_enableWatchers ? CreateWatcher(rootDirectory) : null);
+            }
+        }
+    }
+
+    private FileSystemWatcher CreateWatcher(DirectoryInfo rootDirectory)
+    {
+        var watcher = new FileSystemWatcher(rootDirectory.FullName)
+        {
+            IncludeSubdirectories = true,
+            InternalBufferSize = WatcherBufferSize,
+            NotifyFilter = NotifyFilters.DirectoryName |
+                           NotifyFilters.FileName
+        };
+
+        watcher.Created += (_, args) => MarkPathDirtyCore(args.FullPath);
+        watcher.Deleted += (_, args) => MarkPathDirtyCore(args.FullPath);
+        watcher.Renamed += (_, args) =>
+        {
+            MarkPathDirtyCore(args.OldFullPath);
+            MarkPathDirtyCore(args.FullPath);
+        };
+        watcher.Error += (_, args) => MarkAllRootsDirty(args.GetException());
+        watcher.EnableRaisingEvents = true;
+        return watcher;
+    }
+
+    private IReadOnlyDictionary<string, DirtyRootState> CaptureAndClearDirtyRootStates()
+    {
+        lock (m_watchStateLock)
+        {
+            var dirtyRootStates = new Dictionary<string, DirtyRootState>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (rootPath, rootWatchState) in m_rootWatchStates)
+            {
+                dirtyRootStates[rootPath] = new DirtyRootState(rootWatchState.IsDirty);
+                rootWatchState.IsDirty = false;
+            }
+
+            return dirtyRootStates;
+        }
+    }
+
+    private void MarkPathDirtyCore(string fullPath)
+    {
+        if (string.IsNullOrWhiteSpace(fullPath))
+            return;
+
+        var normalizedPath = NormalizeRootPath(fullPath);
+        lock (m_watchStateLock)
+        {
+            foreach (var (rootPath, rootWatchState) in m_rootWatchStates)
+            {
+                if (!IsPathCoveredByRoot(normalizedPath, rootPath))
+                    continue;
+
+                rootWatchState.IsDirty = true;
+                return;
+            }
+        }
+    }
+
+    private void MarkAllRootsDirty(Exception exception)
+    {
+        lock (m_watchStateLock)
+        {
+            foreach (var rootWatchState in m_rootWatchStates.Values)
+                rootWatchState.IsDirty = true;
+        }
+
+        Logger.Instance.Warn($"Application watcher fell back to a full refresh: {exception?.Message}");
+    }
+
+    private static string BuildDirtyStateSummary(IReadOnlyDictionary<string, DirtyRootState> dirtyRootStates)
+    {
+        if (dirtyRootStates == null || dirtyRootStates.Count == 0)
+            return "Application watcher hints: no roots are being tracked.";
+
+        var dirtyRoots = dirtyRootStates
+            .Where(pair => pair.Value?.IsDirty == true)
+            .Select(pair => Path.GetFileName(pair.Key.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)))
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Take(3)
+            .ToArray();
+        var dirtyRootCount = dirtyRootStates.Count(pair => pair.Value?.IsDirty == true);
+
+        if (dirtyRootCount == 0)
+            return $"Application watcher hints: {dirtyRootStates.Count:N0} roots tracked, no changes flagged.";
+
+        return dirtyRoots.Length == 0
+            ? $"Application watcher hints: {dirtyRootStates.Count:N0} roots tracked, {dirtyRootCount:N0} dirty."
+            : $"Application watcher hints: {dirtyRootStates.Count:N0} roots tracked, {dirtyRootCount:N0} dirty. Samples: {string.Join(", ", dirtyRoots)}.";
+    }
+
+    private static bool IsPathCoveredByRoot(string candidatePath, string rootPath)
+    {
+        var normalizedCandidatePath = NormalizeRootPath(candidatePath);
+        var normalizedRootPath = NormalizeRootPath(rootPath);
+
+        return normalizedCandidatePath.Equals(normalizedRootPath, StringComparison.OrdinalIgnoreCase) ||
+               normalizedCandidatePath.StartsWith($"{normalizedRootPath}{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeRootPath(string path)
+    {
+        return Path.GetFullPath(path ?? string.Empty)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
     internal sealed record WindowsStartApp(string Name, string AppId);
+
+    private sealed class RootWatchState
+    {
+        public RootWatchState(FileSystemWatcher watcher)
+        {
+            Watcher = watcher;
+        }
+
+        public FileSystemWatcher Watcher { get; }
+
+        public bool IsDirty { get; set; }
+    }
+
+    private sealed record DirtyRootState(bool IsDirty);
 }

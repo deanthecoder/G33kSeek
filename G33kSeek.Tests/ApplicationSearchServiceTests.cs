@@ -251,4 +251,79 @@ public class ApplicationSearchServiceTests
 
         Assert.That(refreshCount, Is.EqualTo(1));
     }
+
+    [Test]
+    public async Task WarmAsyncSkipsRefreshWhenApplicationWatchersReportNoChanges()
+    {
+        using var tempDirectory = new TempDirectory();
+        var programsRoot = tempDirectory.GetDir("Programs");
+        programsRoot.Create();
+        IndexedApplication[] cachedApplications =
+        [
+            new IndexedApplication
+            {
+                DisplayName = "Rider",
+                SearchName = "rider",
+                ShortcutFile = programsRoot.GetFile("Rider.lnk")
+            }
+        ];
+        var refreshCount = 0;
+        var service = new ApplicationSearchService(
+            [],
+            [programsRoot],
+            cachedApplications,
+            isMacOS: false,
+            isWindows: true,
+            lastRefreshUtc: DateTime.UtcNow - TimeSpan.FromMinutes(6),
+            windowsStartAppsAccessor: () => [],
+            discoverApplicationsOverride: () =>
+            {
+                refreshCount++;
+                return cachedApplications;
+            },
+            enableWatchers: true);
+
+        await service.WarmAsync();
+
+        Assert.That(refreshCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task WarmAsyncRefreshesWhenApplicationWatcherReportsChanges()
+    {
+        using var tempDirectory = new TempDirectory();
+        var programsRoot = tempDirectory.GetDir("Programs");
+        programsRoot.Create();
+        var shortcutFile = programsRoot.GetFile("Rider.lnk");
+        shortcutFile.WriteAllText(string.Empty);
+        IndexedApplication[] cachedApplications =
+        [
+            new IndexedApplication
+            {
+                DisplayName = "Rider",
+                SearchName = "rider",
+                ShortcutFile = shortcutFile
+            }
+        ];
+        var refreshCount = 0;
+        var service = new ApplicationSearchService(
+            [],
+            [programsRoot],
+            cachedApplications,
+            isMacOS: false,
+            isWindows: true,
+            lastRefreshUtc: DateTime.UtcNow - TimeSpan.FromMinutes(6),
+            windowsStartAppsAccessor: () => [],
+            discoverApplicationsOverride: () =>
+            {
+                refreshCount++;
+                return cachedApplications;
+            },
+            enableWatchers: true);
+
+        service.MarkPathDirty(shortcutFile.FullName);
+        await service.WarmAsync();
+
+        Assert.That(refreshCount, Is.EqualTo(1));
+    }
 }

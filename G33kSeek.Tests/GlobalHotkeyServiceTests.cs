@@ -16,22 +16,22 @@ namespace G33kSeek.Tests;
 public class GlobalHotkeyServiceTests
 {
     [Test]
-    public void IsToggleHotkeyUsesWinSpaceOnWindows()
+    public void IsToggleHotkeyUsesCtrlSpaceOnWindows()
     {
         var isMatch = GlobalHotkeyService.IsToggleHotkey(
             KeyCode.VcSpace,
-            EventMask.LeftMeta,
+            EventMask.LeftCtrl,
             isWindows: true);
 
         Assert.That(isMatch, Is.True);
     }
 
     [Test]
-    public void IsToggleHotkeyRejectsAltSpaceOnWindows()
+    public void IsToggleHotkeyRejectsWinSpaceOnWindows()
     {
         var isMatch = GlobalHotkeyService.IsToggleHotkey(
             KeyCode.VcSpace,
-            EventMask.LeftAlt,
+            EventMask.LeftMeta,
             isWindows: true);
 
         Assert.That(isMatch, Is.False);
@@ -51,7 +51,7 @@ public class GlobalHotkeyServiceTests
     [Test]
     public void GetShortcutDisplayTextReturnsPlatformSpecificLabel()
     {
-        Assert.That(GlobalHotkeyService.GetShortcutDisplayText(isWindows: true), Is.EqualTo("Win+Space"));
+        Assert.That(GlobalHotkeyService.GetShortcutDisplayText(isWindows: true), Is.EqualTo("Ctrl+Space"));
         Assert.That(GlobalHotkeyService.GetShortcutDisplayText(isWindows: false), Is.EqualTo("Ctrl+Space"));
     }
 }

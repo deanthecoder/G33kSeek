@@ -31,6 +31,7 @@ internal sealed class FileSearchService : IDisposable
 {
     private const int CurrentCacheFormatVersion = 6;
     private const int MaxVisibleResults = 25;
+    private const int WatcherBufferSize = 64 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
     private static readonly HashSet<string> ExcludedDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -946,6 +947,7 @@ internal sealed class FileSearchService : IDisposable
         var watcher = new FileSystemWatcher(rootDirectory.FullName)
         {
             IncludeSubdirectories = true,
+            InternalBufferSize = WatcherBufferSize,
             NotifyFilter = NotifyFilters.DirectoryName |
                            NotifyFilters.FileName
         };
@@ -1019,6 +1021,9 @@ internal sealed class FileSearchService : IDisposable
                     return;
                 }
 
+                if (ShouldIgnoreDirtyPath(relativePath))
+                    return;
+
                 var firstSeparatorIndex = relativePath.IndexOf(Path.DirectorySeparatorChar);
                 if (firstSeparatorIndex < 0)
                 {
@@ -1031,6 +1036,27 @@ internal sealed class FileSearchService : IDisposable
                 return;
             }
         }
+    }
+
+    private static bool ShouldIgnoreDirtyPath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+            return false;
+
+        var pathSegments = relativePath
+            .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Where(segment => !string.IsNullOrWhiteSpace(segment));
+
+        foreach (var pathSegment in pathSegments)
+        {
+            if (ExcludedDirectoryNames.Contains(pathSegment))
+                return true;
+
+            if (pathSegment.StartsWith(".", StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>
