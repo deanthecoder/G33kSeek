@@ -50,6 +50,7 @@ internal sealed class FileSearchService : IDisposable
     private readonly List<DirectoryInfo> m_searchRoots;
     private readonly Func<CancellationToken, (IReadOnlyList<IndexedFile> Files, int ScannedDirectoryCount, int SkippedDirectoryCount)> m_discoverFilesOverride;
     private readonly bool m_enableWatchers;
+    private readonly object m_searchCacheLock = new();
     private readonly object m_watchStateLock = new();
     private readonly Dictionary<string, RootWatchState> m_rootWatchStates = new(StringComparer.OrdinalIgnoreCase);
     private bool m_hasExplicitSearchRoots;
@@ -58,6 +59,8 @@ internal sealed class FileSearchService : IDisposable
     private DateTime m_lastRefreshUtc;
     private bool m_isRefreshing;
     private FileRefreshMetrics m_lastRefreshMetrics = FileRefreshMetrics.Empty;
+    private string m_lastSearchQuery = string.Empty;
+    private IReadOnlyList<IndexedFile> m_lastSearchMatches = [];
 
     public FileSearchService()
         : this(new FileSearchSettings(), null, null)
@@ -119,7 +122,8 @@ internal sealed class FileSearchService : IDisposable
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (string.IsNullOrWhiteSpace(query))
+        var normalizedQuery = Normalize(query);
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
             return new FileSearchResult([], 0);
 
         if (m_cachedFiles.Count == 0)
@@ -127,7 +131,10 @@ internal sealed class FileSearchService : IDisposable
         else if (DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval)
             _ = RefreshAsync(CancellationToken.None);
 
-        return RankMatches(query, m_cachedFiles);
+        var previousMatchSource = GetCandidateSearchSet(normalizedQuery);
+        var result = RankMatches(normalizedQuery, previousMatchSource);
+        RememberSearchResult(normalizedQuery, result.MatchingFiles);
+        return result;
     }
 
     internal bool IsRefreshing => m_isRefreshing;
@@ -357,6 +364,7 @@ internal sealed class FileSearchService : IDisposable
         var cacheBuildStopwatch = Stopwatch.StartNew();
         m_cachedFiles = snapshot.Files.ToList();
         m_cachedDirectorySnapshots = snapshot.DirectorySnapshots.ToList();
+        ResetSearchCache();
         cacheBuildStopwatch.Stop();
 
         m_lastRefreshUtc = DateTime.UtcNow;
@@ -434,17 +442,23 @@ internal sealed class FileSearchService : IDisposable
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
     }
 
-    private static FileSearchResult RankMatches(string query, IEnumerable<IndexedFile> files)
+    private static FileSearchResult RankMatches(string normalizedQuery, IEnumerable<IndexedFile> files)
     {
-        var normalizedQuery = Normalize(query);
         if (string.IsNullOrWhiteSpace(normalizedQuery))
             return new FileSearchResult([], 0);
 
+        var queryCharacterMask = BuildCharacterMask(normalizedQuery);
         var totalMatchCount = 0;
+        var matchingFiles = new List<IndexedFile>();
         var bestMatches = new List<(IndexedFile File, FileSortKey SortKey)>(MaxVisibleResults);
 
         foreach (var file in files)
         {
+            if ((file.SearchTextCharacterMask & queryCharacterMask) != queryCharacterMask)
+            {
+                continue;
+            }
+
             if (!file.SearchText.Contains(normalizedQuery, StringComparison.Ordinal))
                 continue;
 
@@ -453,10 +467,11 @@ internal sealed class FileSearchService : IDisposable
                 continue;
 
             totalMatchCount++;
+            matchingFiles.Add(file);
             InsertIntoBestMatches(bestMatches, (file, sortKey));
         }
 
-        return new FileSearchResult(bestMatches.Select(match => match.File).ToArray(), totalMatchCount);
+        return new FileSearchResult(bestMatches.Select(match => match.File).ToArray(), totalMatchCount, matchingFiles);
     }
 
     private static FileSortKey BuildSortKey(string normalizedQuery, IndexedFile file)
@@ -541,6 +556,27 @@ internal sealed class FileSearchService : IDisposable
                 .ToLowerInvariant()
                 .Where(character => char.IsLetterOrDigit(character) || char.IsWhiteSpace(character) || character == '.')
                 .ToArray());
+    }
+
+    private static ulong BuildCharacterMask(string normalizedText)
+    {
+        var mask = 0UL;
+        foreach (var character in normalizedText ?? string.Empty)
+            mask |= GetCharacterBit(character);
+
+        return mask;
+    }
+
+    private static ulong GetCharacterBit(char character)
+    {
+        return character switch
+        {
+            >= 'a' and <= 'z' => 1UL << (character - 'a'),
+            >= '0' and <= '9' => 1UL << (26 + character - '0'),
+            '.' => 1UL << 36,
+            ' ' => 1UL << 37,
+            _ => 1UL << 38
+        };
     }
 
     private static int GetPathSegmentMatchScore(string normalizedQuery, IndexedFile file, out int segmentDistanceFromLeaf)
@@ -818,6 +854,7 @@ internal sealed class FileSearchService : IDisposable
     {
         var fullPath = indexedFile.FullPath;
         indexedFile.SearchText = Normalize($"{indexedFile.DisplayName} {fullPath} {indexedFile.SearchText}");
+        indexedFile.SearchTextCharacterMask = BuildCharacterMask(indexedFile.SearchText);
         indexedFile.NormalizedDisplayName = Normalize(indexedFile.DisplayName);
         indexedFile.DisplayNameWords = SplitWords(indexedFile.NormalizedDisplayName);
         indexedFile.PathSegments = SplitPathSegments(fullPath);
@@ -825,6 +862,39 @@ internal sealed class FileSearchService : IDisposable
             .Select(Normalize)
             .Where(segment => !string.IsNullOrWhiteSpace(segment))
             .ToArray();
+    }
+
+    private IReadOnlyList<IndexedFile> GetCandidateSearchSet(string normalizedQuery)
+    {
+        lock (m_searchCacheLock)
+        {
+            if (!string.IsNullOrWhiteSpace(m_lastSearchQuery) &&
+                normalizedQuery.Length > m_lastSearchQuery.Length &&
+                normalizedQuery.StartsWith(m_lastSearchQuery, StringComparison.Ordinal))
+            {
+                return m_lastSearchMatches;
+            }
+        }
+
+        return m_cachedFiles;
+    }
+
+    private void RememberSearchResult(string normalizedQuery, IReadOnlyList<IndexedFile> matchingFiles)
+    {
+        lock (m_searchCacheLock)
+        {
+            m_lastSearchQuery = normalizedQuery ?? string.Empty;
+            m_lastSearchMatches = matchingFiles ?? [];
+        }
+    }
+
+    private void ResetSearchCache()
+    {
+        lock (m_searchCacheLock)
+        {
+            m_lastSearchQuery = string.Empty;
+            m_lastSearchMatches = [];
+        }
     }
 
     private static string[] SplitWords(string normalizedText)

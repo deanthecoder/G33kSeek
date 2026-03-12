@@ -22,16 +22,19 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchResult
 {
-    public FileSearchResult(IReadOnlyList<IndexedFile> visibleFiles, int totalMatchCount)
+    public FileSearchResult(IReadOnlyList<IndexedFile> visibleFiles, int totalMatchCount, IReadOnlyList<IndexedFile> matchingFiles = null)
     {
         if (totalMatchCount < 0)
             throw new ArgumentOutOfRangeException(nameof(totalMatchCount));
 
         VisibleFiles = visibleFiles ?? [];
         TotalMatchCount = totalMatchCount;
+        MatchingFiles = matchingFiles ?? VisibleFiles;
     }
 
     public IReadOnlyList<IndexedFile> VisibleFiles { get; }
 
     public int TotalMatchCount { get; }
+
+    public IReadOnlyList<IndexedFile> MatchingFiles { get; }
 }

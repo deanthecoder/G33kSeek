@@ -48,6 +48,8 @@ internal sealed class IndexedFile
 
     public string[] NormalizedPathSegments { get; set; } = [];
 
+    public ulong SearchTextCharacterMask { get; set; }
+
     public QueryActionDescriptor CreatePrimaryAction()
     {
         if (IsDirectory)
