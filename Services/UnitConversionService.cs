@@ -284,7 +284,7 @@ internal sealed class UnitConversionService
             if (ch is not ('0' or '1'))
                 return false;
 
-            if (parsedValue > (ulong.MaxValue >> 1))
+            if (parsedValue > ulong.MaxValue >> 1)
                 return false;
 
             parsedValue <<= 1;
@@ -351,7 +351,7 @@ internal sealed class UnitConversionService
     {
         if (IsCelsius(fromUnit) && IsFahrenheit(toUnit))
         {
-            var fahrenheit = (sourceValue * 9m / 5m) + 32m;
+            var fahrenheit = sourceValue * 9m / 5m + 32m;
             convertedValue = $"{FormatApproximateNumber(fahrenheit)} F";
             description = $"{FormatNumber(sourceValue)} C = {convertedValue}";
             return true;
@@ -434,7 +434,7 @@ internal sealed class UnitConversionService
         {
             var totalInches = centimetersValue / CentimetersPerInch;
             var wholeFeet = decimal.Floor(totalInches / InchesPerFoot);
-            var remainingInches = totalInches - (wholeFeet * InchesPerFoot);
+            var remainingInches = totalInches - wholeFeet * InchesPerFoot;
             if (remainingInches >= InchesPerFoot)
             {
                 wholeFeet++;
@@ -555,7 +555,7 @@ internal sealed class UnitConversionService
     private static string FormatStoneAndPounds(decimal poundsValue)
     {
         var wholeStone = decimal.Floor(poundsValue / PoundsPerStone);
-        var remainingPounds = poundsValue - (wholeStone * PoundsPerStone);
+        var remainingPounds = poundsValue - wholeStone * PoundsPerStone;
         var roundedPounds = decimal.Round(remainingPounds, 0, MidpointRounding.AwayFromZero);
 
         if (roundedPounds >= PoundsPerStone)

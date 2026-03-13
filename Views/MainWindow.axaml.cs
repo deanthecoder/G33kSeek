@@ -49,28 +49,33 @@ public partial class MainWindow : Window
     {
         WindowStartupLocation = WindowStartupLocation.Manual;
         Position = GetLauncherPosition();
-        FocusSearchTextBox();
-        ScheduleFocusRetries();
+        m_viewModel.SearchText = string.Empty;
     }
 
-    private void OnOpened(object sender, EventArgs e) =>
-        PrepareForActivation();
-
-    private void OnActivated(object sender, EventArgs e)
+    private void OnOpened(object sender, EventArgs e)
     {
-        FocusSearchTextBox();
-        ScheduleFocusRetries();
+        PrepareForActivation();
+        ScheduleFocus();
+    }
+
+    private void OnActivated(object sender, EventArgs e) =>
+        ScheduleFocus();
+
+    public void HideLauncher()
+    {
+        m_viewModel.SearchText = string.Empty;
+        Dispatcher.UIThread.InvokeAsync(Hide);
     }
 
     private void OnDeactivated(object sender, EventArgs e) =>
-        Hide();
+        HideLauncher();
 
     private async void OnPreviewKeyDownAsync(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
             case Key.Escape:
-                Hide();
+                HideLauncher();
                 e.Handled = true;
                 break;
 
@@ -148,7 +153,7 @@ public partial class MainWindow : Window
             m_viewModel.StatusText = executionResult.StatusText;
 
         if (executionResult.ShouldHideLauncher)
-            Hide();
+            HideLauncher();
     }
 
     private PixelPoint GetLauncherPosition()
@@ -157,7 +162,7 @@ public partial class MainWindow : Window
         var workingArea = screen?.WorkingArea ?? new PixelRect(0, 0, 1440, 900);
         var windowWidth = Bounds.Width > 0 ? (int)Bounds.Width : (int)Width;
         var x = workingArea.X + Math.Max(0, (workingArea.Width - windowWidth) / 2);
-        var y = workingArea.Y + Math.Max(0, (workingArea.Height / 4) - (DefaultVisibleLauncherHeight / 2));
+        var y = workingArea.Y + Math.Max(0, workingArea.Height / 4 - DefaultVisibleLauncherHeight / 2);
         return new PixelPoint(x, y);
     }
 
@@ -196,19 +201,10 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void ScheduleFocusRetries()
-    {
-        Dispatcher.UIThread.Post(FocusSearchTextBox, DispatcherPriority.Input);
-        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(40));
-        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(120));
-        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(250));
-        DispatcherTimer.RunOnce(FocusSearchTextBox, TimeSpan.FromMilliseconds(500));
-    }
-
-    private void FocusSearchTextBox()
-    {
-        SearchTextBox.Focus();
-        SearchTextBox.SelectAll();
-        SearchTextBox.CaretIndex = SearchTextBox.Text?.Length ?? 0;
-    }
+    private void ScheduleFocus() =>
+        Dispatcher.UIThread.Post(() =>
+        {
+            SearchTextBox.Focus();
+            SearchTextBox.CaretIndex = SearchTextBox.Text?.Length ?? 0;
+        }, DispatcherPriority.Input);
 }

@@ -97,7 +97,7 @@ internal sealed class FileSearchSettings : UserSettingsBase
         var compressedCache = serializedCache.Compress();
         compressStopwatch.Stop();
 
-        SearchRoots = hasExplicitSearchRoots ? (searchRoots?.ToList() ?? []) : [];
+        SearchRoots = hasExplicitSearchRoots ? searchRoots?.ToList() ?? [] : [];
         DirectorySnapshotsData = compressedCache;
         LastFileRefreshUtc = lastRefreshUtc;
         CacheFormatVersion = cacheFormatVersion;
