@@ -23,10 +23,16 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class IndexRefreshCoordinator : IIndexRefreshCoordinator
 {
+    private static readonly TimeSpan BackgroundRefreshInitialDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BackgroundRefreshInterval = TimeSpan.FromMinutes(1);
+
     private readonly ApplicationSearchService m_applicationSearchService;
     private readonly FileSearchService m_fileSearchService;
+    private readonly object m_backgroundRefreshSync = new();
     private readonly object m_refreshAllSync = new();
+    private CancellationTokenSource m_backgroundRefreshCancellation;
     private Task m_activeRefreshTask = Task.CompletedTask;
+    private Task m_backgroundRefreshTask;
 
     public IndexRefreshCoordinator(
         ApplicationSearchService applicationSearchService,
@@ -62,11 +68,63 @@ internal sealed class IndexRefreshCoordinator : IIndexRefreshCoordinator
         }
     }
 
+    internal void StartBackgroundRefreshLoop() =>
+        StartBackgroundRefreshLoop(BackgroundRefreshInitialDelay, BackgroundRefreshInterval);
+
+    internal void StartBackgroundRefreshLoop(TimeSpan initialDelay, TimeSpan interval)
+    {
+        if (initialDelay < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(initialDelay));
+        if (interval <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(interval));
+
+        lock (m_backgroundRefreshSync)
+        {
+            if (m_backgroundRefreshTask != null)
+                return;
+
+            m_backgroundRefreshCancellation = new CancellationTokenSource();
+            m_backgroundRefreshTask = Task.Run(
+                () => RunBackgroundRefreshLoopAsync(initialDelay, interval, m_backgroundRefreshCancellation.Token));
+        }
+    }
+
+    internal void StopBackgroundRefreshLoop()
+    {
+        lock (m_backgroundRefreshSync)
+        {
+            if (m_backgroundRefreshCancellation == null)
+                return;
+
+            m_backgroundRefreshCancellation.Cancel();
+            m_backgroundRefreshCancellation.Dispose();
+            m_backgroundRefreshCancellation = null;
+            m_backgroundRefreshTask = null;
+        }
+    }
+
     private async Task RefreshAllCoreAsync(CancellationToken cancellationToken)
     {
         await Task.WhenAll(
             m_applicationSearchService.RefreshNowAsync(cancellationToken),
             m_fileSearchService.RefreshNowAsync(cancellationToken));
+    }
+
+    private async Task RunBackgroundRefreshLoopAsync(TimeSpan initialDelay, TimeSpan interval, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (initialDelay > TimeSpan.Zero)
+                await Task.Delay(initialDelay, cancellationToken).ConfigureAwait(false);
+
+            using var timer = new PeriodicTimer(interval);
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+                await WarmAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on shutdown.
+        }
     }
 
     private async Task WarmApplicationIndexAsync(CancellationToken cancellationToken)

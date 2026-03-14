@@ -9,6 +9,7 @@
 - Search installed applications on macOS and Windows.
 - Search indexed files and folders from common user locations.
 - Open direct file and folder paths without needing them in the index first.
+- Right-click app, file, and folder results for actions such as `Reveal in Finder` / `Reveal in Explorer` and `Copy path`.
 - Evaluate calculator expressions with trig support.
 - Open URLs directly, or run quoted web searches from `?`.
 - Run built-in commands such as `>desktop`, `>guid`, `>log`, `>refresh`, `>shutdown`, and `>lock`.
@@ -39,7 +40,8 @@ rider
 2. Start typing.
 3. Use the arrow keys to move through results.
 4. Press `Enter` to run the selected result.
-5. Press `Esc` to dismiss the launcher.
+5. Right-click a result for secondary actions such as reveal and copy path.
+6. Press `Esc` to dismiss the launcher.
 
 ## Build and run
 Prereqs: .NET 8 SDK.
@@ -53,7 +55,7 @@ dotnet run --project G33kSeek.csproj
 G33kSeek is already useful as a personal launcher, but it is still evolving. The current focus is fast local search, reliable keyboard interaction, and a clean cross-platform Avalonia shell.
 
 Implemented today:
-- MacOS and Windows application discovery
+- macOS and Windows application discovery
 - cached file and folder indexing
 - direct path opening
 - calculator and conversion queries

@@ -115,8 +115,6 @@ internal sealed class ApplicationSearchService : SearchServiceBase
 
         if (m_cachedApplications.Count == 0)
             await RefreshAsync(cancellationToken);
-        else if (DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval)
-            _ = RefreshAsync(CancellationToken.None);
 
         return RankMatches(query, m_cachedApplications);
     }

@@ -28,6 +28,7 @@ public class App : Application
     private ApplicationSearchService m_applicationSearchService;
     private FileSearchService m_fileSearchService;
     private GlobalHotkeyService m_globalHotkeyService;
+    private IndexRefreshCoordinator m_indexRefreshCoordinator;
     private TrayIconService m_trayIconService;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -41,7 +42,7 @@ public class App : Application
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
             m_applicationSearchService = new ApplicationSearchService();
             m_fileSearchService = new FileSearchService();
-            var indexRefreshCoordinator = new IndexRefreshCoordinator(m_applicationSearchService, m_fileSearchService);
+            m_indexRefreshCoordinator = new IndexRefreshCoordinator(m_applicationSearchService, m_fileSearchService);
 
             List<QueryProvider> providers = [];
             var supplementalHelpEntries = new[]
@@ -74,10 +75,10 @@ public class App : Application
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new CommandQueryProvider());
             QueryExecutionService.SearchRootAdder = m_fileSearchService.AddSearchRootAsync;
-            QueryExecutionService.IndexRefresher = indexRefreshCoordinator.RefreshAllAsync;
+            QueryExecutionService.IndexRefresher = m_indexRefreshCoordinator.RefreshAllAsync;
 
             var queryEngine = new QueryEngine(providers);
-            var viewModel = new MainWindowViewModel(queryEngine, indexRefreshCoordinator);
+            var viewModel = new MainWindowViewModel(queryEngine, m_indexRefreshCoordinator);
             var launcherWindow = new MainWindow(viewModel);
             var launcherWindowService = new LauncherWindowService(desktop, launcherWindow);
             m_trayIconService = new TrayIconService(this, launcherWindowService, () => desktop.Shutdown());
@@ -87,7 +88,8 @@ public class App : Application
 
             m_trayIconService.Initialize();
             m_globalHotkeyService.Start();
-            _ = indexRefreshCoordinator.WarmAsync();
+            m_indexRefreshCoordinator.StartBackgroundRefreshLoop();
+            _ = m_indexRefreshCoordinator.WarmAsync();
 
 #if DEBUG
             launcherWindowService.Show();
@@ -99,6 +101,7 @@ public class App : Application
 
     private void Desktop_OnExit(object sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        m_indexRefreshCoordinator?.StopBackgroundRefreshLoop();
         m_globalHotkeyService?.Dispose();
         m_applicationSearchService?.Dispose();
         m_fileSearchService?.Dispose();

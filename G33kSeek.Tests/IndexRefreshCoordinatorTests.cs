@@ -107,4 +107,49 @@ public class IndexRefreshCoordinatorTests
         Assert.That(applicationRefreshCount, Is.EqualTo(1));
         Assert.That(fileRefreshCount, Is.EqualTo(1));
     }
+
+    [Test]
+    public async Task StartBackgroundRefreshLoopWarmsIndexesWithoutUserQuery()
+    {
+        var applicationRefreshCount = 0;
+        var fileRefreshCount = 0;
+        var applicationRefreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fileRefreshed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var applicationSearchService = new ApplicationSearchService(
+            [],
+            [],
+            [],
+            isMacOS: false,
+            isWindows: true,
+            lastRefreshUtc: DateTime.MinValue,
+            windowsStartAppsAccessor: () => [],
+            discoverApplicationsOverride: () =>
+            {
+                applicationRefreshCount++;
+                applicationRefreshed.TrySetResult();
+                return [];
+            });
+        var fileSearchService = new FileSearchService(
+            [],
+            [],
+            DateTime.MinValue,
+            _ =>
+            {
+                fileRefreshCount++;
+                fileRefreshed.TrySetResult();
+                return ([], 0, 0);
+            });
+        var coordinator = new IndexRefreshCoordinator(applicationSearchService, fileSearchService);
+
+        coordinator.StartBackgroundRefreshLoop(TimeSpan.Zero, TimeSpan.FromMilliseconds(20));
+
+        await Task.WhenAll(
+            applicationRefreshed.Task.WaitAsync(TimeSpan.FromSeconds(1)),
+            fileRefreshed.Task.WaitAsync(TimeSpan.FromSeconds(1)));
+
+        coordinator.StopBackgroundRefreshLoop();
+
+        Assert.That(applicationRefreshCount, Is.EqualTo(1));
+        Assert.That(fileRefreshCount, Is.EqualTo(1));
+    }
 }

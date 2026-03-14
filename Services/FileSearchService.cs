@@ -130,8 +130,6 @@ internal sealed class FileSearchService : SearchServiceBase
 
         if (m_cachedFiles.Count == 0)
             await RefreshAsync(cancellationToken);
-        else if (DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval)
-            _ = RefreshAsync(CancellationToken.None);
 
         var previousMatchSource = GetCandidateSearchSet(normalizedQuery);
         var result = RankMatches(normalizedQuery, previousMatchSource);
