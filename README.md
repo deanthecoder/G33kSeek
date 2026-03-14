@@ -11,6 +11,7 @@
 - Open direct file and folder paths without needing them in the index first.
 - Right-click app, file, and folder results for actions such as `Reveal in Finder` / `Reveal in Explorer` and `Copy path`.
 - Evaluate calculator expressions with trig support.
+- Copy emoji with queries such as `:smile`, `:heart`, `:wave`, and `:)`.
 - Open URLs directly, or run quoted web searches from `?`.
 - Run built-in commands such as `>desktop`, `>guid`, `>log`, `>refresh`, `>shutdown`, and `>lock`.
 - Return quick utility values such as date, time, and unit/base conversions.
@@ -21,6 +22,7 @@ rider
 =sin(pi / 2)
 10mb in bytes
 255 in binary
+:wave
 ?"avalonia docs"
 >downloads
 /Users/dean/Documents/Source/Repos/ReviewG33k/README.md
@@ -31,6 +33,7 @@ rider
 | --- | --- | --- |
 | none | App, file, folder, URL, and utility search | `rider` |
 | `=` | Calculator | `=2+2` |
+| `:` | Emoji lookup and emoticons | `:smile` |
 | `?` | Help, help filtering, and quoted web search | `?"avalonia docs"` |
 | `>` | Built-in commands | `>guid` |
 
@@ -59,6 +62,7 @@ Implemented today:
 - cached file and folder indexing
 - direct path opening
 - calculator and conversion queries
+- emoji lookup and emoticon shortcuts
 - help and web search support
 - command-driven launcher utilities
 

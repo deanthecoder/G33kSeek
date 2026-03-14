@@ -56,6 +56,19 @@ public class QueryEngineTests
         Assert.That(helpProvider.LastRequest.Prefix, Is.EqualTo("?"));
     }
 
+    [Test]
+    public async Task QueryAsyncRoutesColonInputToEmojiProvider()
+    {
+        var emojiProvider = new FakeQueryProvider(":", "emoji");
+        var engine = new QueryEngine([emojiProvider, new FakeQueryProvider(string.Empty, "default")]);
+
+        var response = await engine.QueryAsync(":wave");
+
+        Assert.That(response.Results[0].Title, Is.EqualTo("emoji"));
+        Assert.That(emojiProvider.LastRequest.ProviderQuery, Is.EqualTo("wave"));
+        Assert.That(emojiProvider.LastRequest.Prefix, Is.EqualTo(":"));
+    }
+
     private sealed class FakeQueryProvider : QueryProvider
     {
         private readonly string m_title;

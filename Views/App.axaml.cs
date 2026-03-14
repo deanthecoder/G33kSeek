@@ -72,6 +72,7 @@ public class App : Application
 
             providers.Add(new DefaultQueryProvider(m_applicationSearchService, m_fileSearchService));
             providers.Add(new CalculatorQueryProvider());
+            providers.Add(new EmojiQueryProvider());
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new CommandQueryProvider());
             QueryExecutionService.SearchRootAdder = m_fileSearchService.AddSearchRootAsync;

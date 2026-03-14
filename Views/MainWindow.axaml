@@ -120,8 +120,7 @@
                     </ContextMenu>
                   </Grid.ContextMenu>
                   <StackPanel Spacing="2">
-                    <TextBlock FontSize="16"
-                               FontWeight="SemiBold"
+                    <TextBlock Classes="resultTitle"
                                Text="{Binding Title}" />
                     <TextBlock Classes="resultSubtitle"
                                Text="{Binding Subtitle}" />

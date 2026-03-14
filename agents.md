@@ -10,6 +10,7 @@ The project already supports:
 - direct path opening
 - calculator queries with copy-on-Enter
 - help via `?`
+- emoji lookup via `:`
 - quoted web search via `?"search text"`
 - built-in commands via `>`
 - date, time, and conversion utilities
@@ -69,12 +70,14 @@ Current query behaviour:
 | --- | --- | --- |
 | none | App, file, folder, URL, and utility search | `rider` |
 | `=` | Calculator | `=2+2` |
+| `:` | Emoji lookup and emoticons | `:smile`, `:)`, `:heart` |
 | `?` | Help, help filtering, and quoted web search | `?`, `?calc`, `?"avalonia docs"` |
 | `>` | Commands | `>guid` |
 
 Notes:
 
 - Bare `?` shows in-app help.
+- `:` performs emoji lookup and also supports simple emoticons such as `:)` and `:(`.
 - `?text` filters help topics.
 - `?"text"` performs a web search.
 - Direct URLs such as `https://...` and `www...` should open in the browser.
@@ -140,7 +143,6 @@ Possible later additions:
 
 - clipboard history
 - clipboard text helpers
-- emoji picker
 - colour utilities
 - git commands
 - plugin system
