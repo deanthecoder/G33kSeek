@@ -33,6 +33,7 @@ internal sealed class FileSearchService : SearchServiceBase
     private const int MaxVisibleResults = 25;
     private const int WatcherBufferSize = 64 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan FullRefreshInterval = TimeSpan.FromHours(1);
     private static readonly HashSet<string> ExcludedDirectoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
         ".git",
@@ -57,6 +58,7 @@ internal sealed class FileSearchService : SearchServiceBase
     private List<IndexedDirectorySnapshot> m_cachedDirectorySnapshots;
     private List<IndexedFile> m_cachedFiles;
     private DateTime m_lastRefreshUtc;
+    private DateTime m_lastFullRefreshUtc;
     private FileRefreshMetrics m_lastRefreshMetrics = FileRefreshMetrics.Empty;
     private string m_lastSearchQuery = string.Empty;
     private IReadOnlyList<IndexedFile> m_lastSearchMatches = [];
@@ -87,6 +89,7 @@ internal sealed class FileSearchService : SearchServiceBase
         m_cachedDirectorySnapshots = [];
         m_cachedFiles = [];
         m_lastRefreshUtc = isCompatibleCache ? settings.LastFileRefreshUtc : DateTime.MinValue;
+        m_lastFullRefreshUtc = m_lastRefreshUtc;
         m_cacheInitializationTask = isCompatibleCache
             ? Task.Run(LoadPersistedCache)
             : Task.CompletedTask;
@@ -111,6 +114,7 @@ internal sealed class FileSearchService : SearchServiceBase
             ? preparedCachedFiles
             : FlattenSnapshots(m_cachedDirectorySnapshots);
         m_lastRefreshUtc = lastRefreshUtc ?? DateTime.MinValue;
+        m_lastFullRefreshUtc = m_lastRefreshUtc;
         m_cacheInitializationTask = Task.CompletedTask;
         ResetWatchers();
     }
@@ -250,6 +254,7 @@ internal sealed class FileSearchService : SearchServiceBase
             m_cachedDirectorySnapshots = [];
             m_cachedFiles = [];
             m_lastRefreshUtc = DateTime.MinValue;
+            m_lastFullRefreshUtc = DateTime.MinValue;
             Logger.Instance.Exception("Loading cached file index failed.", ex);
         }
     }
@@ -379,6 +384,15 @@ internal sealed class FileSearchService : SearchServiceBase
         var dirtyRootStates = CaptureAndClearDirtyRootStates();
         Logger.Instance.Info(BuildDirtyStateSummary(dirtyRootStates));
 
+        if (m_cachedFiles.Count > 0 &&
+            !ShouldPerformFullRefresh(dirtyRootStates))
+        {
+            m_lastRefreshUtc = DateTime.UtcNow;
+            m_lastRefreshMetrics = FileRefreshMetrics.Empty;
+            Logger.Instance.Info($"File index refresh skipped in {stopwatch.ElapsedMilliseconds:N0} ms. Watcher reported no relevant changes.");
+            return;
+        }
+
         var discoverStopwatch = Stopwatch.StartNew();
         var snapshot = await Task.Run(() => DiscoverFiles(cancellationToken, dirtyRootStates), cancellationToken);
         discoverStopwatch.Stop();
@@ -390,6 +404,7 @@ internal sealed class FileSearchService : SearchServiceBase
         cacheBuildStopwatch.Stop();
 
         m_lastRefreshUtc = DateTime.UtcNow;
+        m_lastFullRefreshUtc = m_lastRefreshUtc;
         SaveIfPersistent();
         m_lastRefreshMetrics = new FileRefreshMetrics(
             snapshot.VisitedDirectoryCount,
@@ -402,6 +417,29 @@ internal sealed class FileSearchService : SearchServiceBase
     private bool NeedsRefresh()
     {
         return m_lastRefreshUtc == DateTime.MinValue || DateTime.UtcNow - m_lastRefreshUtc > RefreshInterval;
+    }
+
+    private bool ShouldPerformFullRefresh(IReadOnlyDictionary<string, DirtyRootState> dirtyRootStates)
+    {
+        if (!m_enableWatchers)
+            return true;
+
+        if (DateTime.UtcNow - m_lastFullRefreshUtc > FullRefreshInterval)
+            return true;
+
+        if (dirtyRootStates == null || dirtyRootStates.Count == 0)
+            return true;
+
+        return dirtyRootStates.Any(pair =>
+            pair.Value is
+            {
+                IsWholeRootDirty: true
+            } ||
+            pair.Value is
+            {
+                AreRootEntriesDirty: true
+            } ||
+            pair.Value?.DirtyTopLevelDirectories.Count > 0);
     }
 
     private void ReplaceSearchRoots(IEnumerable<DirectoryInfo> directories)

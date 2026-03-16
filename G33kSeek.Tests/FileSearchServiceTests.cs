@@ -10,6 +10,7 @@
 
 using DTC.Core;
 using DTC.Core.Extensions;
+using G33kSeek.Models;
 using G33kSeek.Services;
 
 namespace G33kSeek.Tests;
@@ -281,6 +282,62 @@ public class FileSearchServiceTests
         var firstWarmTask = service.WarmAsync();
         await Task.Delay(20);
         await Task.WhenAll(firstWarmTask, service.WarmAsync());
+
+        Assert.That(refreshCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task WarmAsyncSkipsRefreshWhenWatchersReportNoChanges()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        var cachedFile = new IndexedFile
+        {
+            DisplayName = "report.txt",
+            File = documentsDirectory.GetFile("report.txt")
+        };
+        var refreshCount = 0;
+        var service = new FileSearchService(
+            [documentsDirectory],
+            [cachedFile],
+            DateTime.UtcNow - TimeSpan.FromMinutes(11),
+            _ =>
+            {
+                refreshCount++;
+                return ([cachedFile], 0, 0);
+            },
+            enableWatchers: true);
+
+        await service.WarmAsync();
+
+        Assert.That(refreshCount, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task WarmAsyncRefreshesWhenPeriodicFullReconcileIsDue()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        var cachedFile = new IndexedFile
+        {
+            DisplayName = "report.txt",
+            File = documentsDirectory.GetFile("report.txt")
+        };
+        var refreshCount = 0;
+        var service = new FileSearchService(
+            [documentsDirectory],
+            [cachedFile],
+            DateTime.UtcNow - TimeSpan.FromHours(2),
+            _ =>
+            {
+                refreshCount++;
+                return ([cachedFile], 0, 0);
+            },
+            enableWatchers: true);
+
+        await service.WarmAsync();
 
         Assert.That(refreshCount, Is.EqualTo(1));
     }
