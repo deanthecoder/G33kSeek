@@ -53,6 +53,23 @@ public class IndexedApplicationTests
     }
 
     [Test]
+    public void CreatePrimaryActionReturnsOpenUriForWindowsSettingsApplications()
+    {
+        var application = new IndexedApplication
+        {
+            DisplayName = "Add or remove programs",
+            LaunchKind = ApplicationLaunchKind.OpenUri,
+            LaunchUri = "ms-settings:appsfeatures"
+        };
+
+        var action = application.CreatePrimaryAction();
+
+        Assert.That(action.Kind, Is.EqualTo(QueryActionKind.OpenUri));
+        Assert.That(action.Payload, Is.EqualTo("ms-settings:appsfeatures"));
+        Assert.That(application.Subtitle, Is.EqualTo("ms-settings:appsfeatures"));
+    }
+
+    [Test]
     public void SerializationOmitsComputedLaunchProperties()
     {
         var application = new IndexedApplication

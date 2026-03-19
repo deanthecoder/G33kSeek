@@ -346,6 +346,7 @@ internal sealed class ApplicationSearchService : SearchServiceBase
                     };
                 })
             .Concat(DiscoverWindowsStartApps())
+            .Concat(DiscoverWindowsSystemEntries())
             .GroupBy(app => app.SearchName, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.OrderByDescending(app => app.ShortcutFile != null).First())
             .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
@@ -365,6 +366,20 @@ internal sealed class ApplicationSearchService : SearchServiceBase
                     AppUserModelId = app.AppId
                 })
             .ToArray();
+    }
+
+    private static IReadOnlyList<IndexedApplication> DiscoverWindowsSystemEntries()
+    {
+        return
+        [
+            new IndexedApplication
+            {
+                DisplayName = "Add or remove programs",
+                LaunchKind = ApplicationLaunchKind.OpenUri,
+                LaunchUri = "ms-settings:appsfeatures",
+                SearchName = Normalize("Add or remove programs Apps and features Installed apps Uninstall programs")
+            }
+        ];
     }
 
     private static IEnumerable<FileInfo> DiscoverWindowsShortcuts(DirectoryInfo root)

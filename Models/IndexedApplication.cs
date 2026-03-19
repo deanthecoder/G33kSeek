@@ -31,6 +31,8 @@ internal sealed class IndexedApplication
 
     public string AppUserModelId { get; set; } = string.Empty;
 
+    public string LaunchUri { get; set; } = string.Empty;
+
     public DirectoryInfo BundleDirectory { get; set; }
 
     public FileInfo ShortcutFile { get; set; }
@@ -39,7 +41,13 @@ internal sealed class IndexedApplication
     public string LaunchPath => BundleDirectory?.FullName ?? ShortcutFile?.FullName ?? string.Empty;
 
     [JsonIgnore]
-    public string Subtitle => ResolveLaunchKind() == ApplicationLaunchKind.WindowsShellApp ? AppUserModelId : LaunchPath;
+    public string Subtitle =>
+        ResolveLaunchKind() switch
+        {
+            ApplicationLaunchKind.WindowsShellApp => AppUserModelId,
+            ApplicationLaunchKind.OpenUri => LaunchUri,
+            _ => LaunchPath
+        };
 
     public QueryActionDescriptor CreatePrimaryAction()
     {
@@ -53,6 +61,10 @@ internal sealed class IndexedApplication
                 QueryActionKind.RunProcess,
                 "explorer.exe",
                 arguments: $"\"shell:AppsFolder\\{AppUserModelId}\"",
+                successMessage: $"Launching {DisplayName}."),
+            ApplicationLaunchKind.OpenUri => new QueryActionDescriptor(
+                QueryActionKind.OpenUri,
+                LaunchUri,
                 successMessage: $"Launching {DisplayName}."),
             _ => throw new InvalidOperationException($"Indexed application '{DisplayName}' does not have a valid launch target.")
         };
@@ -76,6 +88,9 @@ internal sealed class IndexedApplication
 
         if (!string.IsNullOrWhiteSpace(AppUserModelId))
             return ApplicationLaunchKind.WindowsShellApp;
+
+        if (!string.IsNullOrWhiteSpace(LaunchUri))
+            return ApplicationLaunchKind.OpenUri;
 
         return ApplicationLaunchKind.Auto;
     }

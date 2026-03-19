@@ -209,6 +209,27 @@ public class ApplicationSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncDiscoversWindowsSystemSettingsEntries()
+    {
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [],
+            isMacOS: false,
+            isWindows: true,
+            lastRefreshUtc: null,
+            windowsStartAppsAccessor: () => []);
+
+        var results = await service.SearchAsync("remove programs", CancellationToken.None);
+
+        Assert.That(results.Any(result => result.DisplayName == "Add or remove programs"), Is.True);
+        var addRemoveProgramsResult = results.Single(result => result.DisplayName == "Add or remove programs");
+        var action = addRemoveProgramsResult.CreatePrimaryAction();
+        Assert.That(action.Kind, Is.EqualTo(QueryActionKind.OpenUri));
+        Assert.That(action.Payload, Is.EqualTo("ms-settings:appsfeatures"));
+    }
+
+    [Test]
     public async Task SearchAsyncReturnsEmptyWhenPlatformIsUnsupported()
     {
         var service = new ApplicationSearchService([], [], [], isMacOS: false, isWindows: false);

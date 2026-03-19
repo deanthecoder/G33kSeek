@@ -20,5 +20,6 @@ internal enum ApplicationLaunchKind
 {
     Auto,
     OpenPath,
+    OpenUri,
     WindowsShellApp
 }
