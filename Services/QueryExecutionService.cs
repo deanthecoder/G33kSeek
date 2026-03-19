@@ -67,53 +67,42 @@ public static class QueryExecutionService
                 return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
 
             case QueryActionKind.OpenPath:
-                if (File.Exists(action.Payload))
-                {
-                    FileOpener(new FileInfo(action.Payload));
-                    return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
-                }
-
-                if (Directory.Exists(action.Payload))
-                {
-                    DirectoryOpener(new DirectoryInfo(action.Payload));
-                    return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
-                }
-
-                return new QueryExecutionResult(false, "The target path no longer exists.");
+                return await ExecuteBackgroundPathActionAsync(
+                    action,
+                    File.Exists(action.Payload)
+                        ? () => FileOpener(new FileInfo(action.Payload))
+                        : Directory.Exists(action.Payload)
+                            ? () => DirectoryOpener(new DirectoryInfo(action.Payload))
+                            : null,
+                    "The target path no longer exists.");
 
             case QueryActionKind.RevealPath:
-                if (File.Exists(action.Payload))
-                {
-                    FileRevealer(new FileInfo(action.Payload));
-                    return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
-                }
-
-                if (Directory.Exists(action.Payload))
-                {
-                    DirectoryRevealer(new DirectoryInfo(action.Payload));
-                    return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
-                }
-
-                return new QueryExecutionResult(false, "The target path no longer exists.");
+                return await ExecuteBackgroundPathActionAsync(
+                    action,
+                    File.Exists(action.Payload)
+                        ? () => FileRevealer(new FileInfo(action.Payload))
+                        : Directory.Exists(action.Payload)
+                            ? () => DirectoryRevealer(new DirectoryInfo(action.Payload))
+                            : null,
+                    "The target path no longer exists.");
 
             case QueryActionKind.OpenUri:
-                if (Uri.TryCreate(action.Payload, UriKind.Absolute, out var uri))
-                {
-                    UriOpener(uri);
-                    return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
-                }
+                if (!Uri.TryCreate(action.Payload, UriKind.Absolute, out var uri))
+                    return new QueryExecutionResult(false, "The target URL was invalid.");
 
-                return new QueryExecutionResult(false, "The target URL was invalid.");
+                await ExecuteInBackgroundAsync(() => UriOpener(uri));
+                return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
 
             case QueryActionKind.RunProcess:
                 if (string.IsNullOrWhiteSpace(action.Payload))
                     return new QueryExecutionResult(false, "The target command was invalid.");
 
-                ProcessStarter(
-                    new ProcessStartInfo(action.Payload, action.Arguments ?? string.Empty)
-                    {
-                        UseShellExecute = false
-                    });
+                await ExecuteInBackgroundAsync(
+                    () => ProcessStarter(
+                        new ProcessStartInfo(action.Payload, action.Arguments ?? string.Empty)
+                        {
+                            UseShellExecute = false
+                        }));
                 return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
 
             case QueryActionKind.ExitApp:
@@ -174,4 +163,19 @@ public static class QueryExecutionService
         cancellationToken.ThrowIfCancellationRequested();
         return directory?.Exists == true ? directory : null;
     }
+
+    private static async Task<QueryExecutionResult> ExecuteBackgroundPathActionAsync(
+        QueryActionDescriptor action,
+        Action actionToExecute,
+        string failureMessage)
+    {
+        if (actionToExecute == null)
+            return new QueryExecutionResult(false, failureMessage);
+
+        await ExecuteInBackgroundAsync(actionToExecute);
+        return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
+    }
+
+    private static Task ExecuteInBackgroundAsync(Action actionToExecute) =>
+        Task.Run(actionToExecute);
 }
