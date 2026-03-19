@@ -13,7 +13,7 @@
 - Evaluate calculator expressions with trig support.
 - Copy emoji with queries such as `:smile`, `:heart`, `:wave`, and `:)`.
 - Open URLs directly, or run quoted web searches from `?`.
-- Run built-in commands such as `>desktop`, `>guid`, `>log`, `>refresh`, `>shutdown`, and `>lock`.
+- Run built-in commands such as `>desktop`, `>exit`, `>guid`, `>log`, `>refresh`, `>shutdown`, and `>lock`.
 - Return quick utility values such as date, time, and unit/base conversions.
 
 ## Quick examples

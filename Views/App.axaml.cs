@@ -75,6 +75,7 @@ public class App : Application
             providers.Add(new EmojiQueryProvider());
             providers.Add(new HelpQueryProvider(GetHelpEntries));
             providers.Add(new CommandQueryProvider());
+            QueryExecutionService.ExitApplication = () => desktop.Shutdown();
             QueryExecutionService.SearchRootAdder = m_fileSearchService.AddSearchRootAsync;
             QueryExecutionService.IndexRefresher = m_indexRefreshCoordinator.RefreshAllAsync;
 

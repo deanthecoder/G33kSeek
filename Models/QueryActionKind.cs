@@ -24,6 +24,7 @@ public enum QueryActionKind
     RevealPath,
     OpenUri,
     RunProcess,
+    ExitApp,
     AddSearchRoot,
     RefreshIndexes
 }

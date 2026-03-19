@@ -180,6 +180,7 @@ public sealed class CommandQueryProvider : IQueryProvider
         commands.Add(new CommandDefinition("guid", "Generate a dashed GUID.", CreateGuidResult));
         commands.Add(new CommandDefinition("ip", "Show local IPv4 addresses.", CreateIpResult));
         commands.Add(new CommandDefinition("log", "Open the launcher log file.", CreateLogResult));
+        commands.Add(new CommandDefinition("exit", "Quit G33kSeek.", CreateExitResult));
         commands.Add(new CommandDefinition("refresh", "Refresh the app and file indexes now.", CreateRefreshResult));
 
         if (m_isMacOS)
@@ -221,6 +222,17 @@ public sealed class CommandQueryProvider : IQueryProvider
                 QueryActionKind.RefreshIndexes,
                 successMessage: "Refreshing app and file indexes.",
                 shouldHideLauncher: false));
+    }
+
+    private static QueryResult CreateExitResult()
+    {
+        return new QueryResult(
+            "exit",
+            "Quit G33kSeek.",
+            "Command",
+            new QueryActionDescriptor(
+                QueryActionKind.ExitApp,
+                successMessage: "Exiting G33kSeek."));
     }
 
     private static void AddFolderCommand(List<CommandDefinition> commands, string name, string description, DirectoryInfo directory)

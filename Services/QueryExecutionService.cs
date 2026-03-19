@@ -34,6 +34,7 @@ public static class QueryExecutionService
     internal static Action<DirectoryInfo> DirectoryRevealer { get; set; } = directory => directory.Explore();
     internal static Action<Uri> UriOpener { get; set; } = uri => uri.Open();
     internal static Action<ProcessStartInfo> ProcessStarter { get; set; } = processStartInfo => Process.Start(processStartInfo);
+    internal static Action ExitApplication { get; set; }
     internal static Func<CancellationToken, Task<DirectoryInfo>> SearchRootPicker { get; set; } = PickSearchRootAsync;
     internal static Func<DirectoryInfo, CancellationToken, Task<FileSearchRootAddStatus>> SearchRootAdder { get; set; }
     internal static Func<CancellationToken, Task> IndexRefresher { get; set; }
@@ -113,6 +114,13 @@ public static class QueryExecutionService
                     {
                         UseShellExecute = false
                     });
+                return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
+
+            case QueryActionKind.ExitApp:
+                if (ExitApplication == null)
+                    return new QueryExecutionResult(false, "Exiting the app is not available.");
+
+                ExitApplication();
                 return new QueryExecutionResult(true, action.SuccessMessage, action.ShouldHideLauncher);
 
             case QueryActionKind.AddSearchRoot:

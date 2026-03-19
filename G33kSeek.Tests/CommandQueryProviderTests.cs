@@ -26,8 +26,8 @@ public class CommandQueryProviderTests
 
         var response = await provider.QueryAsync(new QueryRequest(">", string.Empty, ">"), CancellationToken.None);
 
-        Assert.That(response.Results, Has.Count.EqualTo(13));
-        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "addfolder", "desktop", "documents", "downloads", "guid", "home", "ip", "lock", "log", "logoff", "refresh", "restart", "shutdown" }));
+        Assert.That(response.Results, Has.Count.EqualTo(14));
+        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "addfolder", "desktop", "documents", "downloads", "exit", "guid", "home", "ip", "lock", "log", "logoff", "refresh", "restart", "shutdown" }));
     }
 
     [Test]
@@ -197,6 +197,19 @@ public class CommandQueryProviderTests
         Assert.That(response.Results[0].Title, Is.EqualTo("refresh"));
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.RefreshIndexes));
         Assert.That(response.Results[0].PrimaryAction?.ShouldHideLauncher, Is.False);
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsExitCommand()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
+
+        var response = await provider.QueryAsync(new QueryRequest(">exit", "exit", ">"), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("exit"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.ExitApp));
     }
 
     private static CommandQueryProvider CreateProvider(TempDirectory tempDirectory, IReadOnlyList<string> ipAddresses)

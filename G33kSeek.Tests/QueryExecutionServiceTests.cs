@@ -27,6 +27,7 @@ public class QueryExecutionServiceTests
         QueryExecutionService.DirectoryRevealer = directory => directory.Explore();
         QueryExecutionService.UriOpener = uri => uri.Open();
         QueryExecutionService.ProcessStarter = processStartInfo => Process.Start(processStartInfo);
+        QueryExecutionService.ExitApplication = null;
         QueryExecutionService.SearchRootPicker = _ => Task.FromResult<DirectoryInfo>(null);
         QueryExecutionService.SearchRootAdder = (_, _) => Task.FromResult(FileSearchRootAddStatus.Unavailable);
         QueryExecutionService.IndexRefresher = _ => Task.CompletedTask;
@@ -176,5 +177,24 @@ public class QueryExecutionServiceTests
         Assert.That(result.IsSuccess, Is.True);
         Assert.That(result.StatusText, Is.EqualTo("Refreshing app and file indexes."));
         Assert.That(result.ShouldHideLauncher, Is.False);
+    }
+
+    [Test]
+    public async Task ExecuteAsyncExitsApplication()
+    {
+        var exitRequested = false;
+        QueryExecutionService.ExitApplication = () => exitRequested = true;
+
+        var result = await QueryExecutionService.ExecuteAsync(
+            new QueryResult(
+                "exit",
+                primaryAction: new QueryActionDescriptor(
+                    QueryActionKind.ExitApp,
+                    successMessage: "Exiting G33kSeek.")),
+            null);
+
+        Assert.That(exitRequested, Is.True);
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(result.StatusText, Is.EqualTo("Exiting G33kSeek."));
     }
 }
