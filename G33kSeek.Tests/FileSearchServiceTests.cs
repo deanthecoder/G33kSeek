@@ -18,7 +18,7 @@ namespace G33kSeek.Tests;
 public class FileSearchServiceTests
 {
     [Test]
-    public void GetDefaultSearchRootsIncludesCommonDocumentsOnWindows()
+    public void GetDefaultSearchRootsIncludesCommonDocumentsAndDesktopOnWindows()
     {
         var userProfilePath = CreateRootedPath("Users", "Dean");
         var publicDocumentsPath = CreateRootedPath("Users", "Public", "Documents");
@@ -28,6 +28,7 @@ public class FileSearchServiceTests
             {
                 Environment.SpecialFolder.MyDocuments => Path.Combine(userProfilePath, "Documents"),
                 Environment.SpecialFolder.MyPictures => Path.Combine(userProfilePath, "Pictures"),
+                Environment.SpecialFolder.DesktopDirectory => Path.Combine(userProfilePath, "Desktop"),
                 Environment.SpecialFolder.UserProfile => userProfilePath,
                 Environment.SpecialFolder.CommonDocuments => publicDocumentsPath,
                 _ => string.Empty
@@ -37,13 +38,14 @@ public class FileSearchServiceTests
         {
             Path.Combine(userProfilePath, "Documents"),
             Path.Combine(userProfilePath, "Pictures"),
+            Path.Combine(userProfilePath, "Desktop"),
             Path.Combine(userProfilePath, "Downloads"),
             publicDocumentsPath
         }));
     }
 
     [Test]
-    public void GetDefaultSearchRootsIncludesPicturesAndDownloadsCrossPlatform()
+    public void GetDefaultSearchRootsIncludesPicturesDesktopAndDownloadsCrossPlatform()
     {
         var userProfilePath = CreateRootedPath("Users", "Dean");
         var roots = FileSearchService.GetDefaultSearchRoots(
@@ -52,6 +54,7 @@ public class FileSearchServiceTests
             {
                 Environment.SpecialFolder.MyDocuments => Path.Combine(userProfilePath, "Documents"),
                 Environment.SpecialFolder.MyPictures => Path.Combine(userProfilePath, "Pictures"),
+                Environment.SpecialFolder.DesktopDirectory => Path.Combine(userProfilePath, "Desktop"),
                 Environment.SpecialFolder.UserProfile => userProfilePath,
                 _ => string.Empty
             });
@@ -60,6 +63,35 @@ public class FileSearchServiceTests
         {
             Path.Combine(userProfilePath, "Documents"),
             Path.Combine(userProfilePath, "Pictures"),
+            Path.Combine(userProfilePath, "Desktop"),
+            Path.Combine(userProfilePath, "Downloads")
+        }));
+    }
+
+    [Test]
+    public void GetInitialSearchRootsMergesConfiguredRootsWithDefaultRoots()
+    {
+        var userProfilePath = CreateRootedPath("Users", "Dean");
+        var configuredRoot = CreateRootedPath("Projects", "Shared");
+        var roots = FileSearchService.GetInitialSearchRoots(
+            [configuredRoot.ToDir()],
+            hasExplicitSearchRoots: true,
+            isWindows: false,
+            folderPathAccessor: specialFolder => specialFolder switch
+            {
+                Environment.SpecialFolder.MyDocuments => Path.Combine(userProfilePath, "Documents"),
+                Environment.SpecialFolder.MyPictures => Path.Combine(userProfilePath, "Pictures"),
+                Environment.SpecialFolder.DesktopDirectory => Path.Combine(userProfilePath, "Desktop"),
+                Environment.SpecialFolder.UserProfile => userProfilePath,
+                _ => string.Empty
+            });
+
+        Assert.That(roots.Select(root => root.FullName), Is.EquivalentTo(new[]
+        {
+            configuredRoot,
+            Path.Combine(userProfilePath, "Documents"),
+            Path.Combine(userProfilePath, "Pictures"),
+            Path.Combine(userProfilePath, "Desktop"),
             Path.Combine(userProfilePath, "Downloads")
         }));
     }

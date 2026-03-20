@@ -29,7 +29,7 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchService : SearchServiceBase
 {
-    private const int CurrentCacheFormatVersion = 6;
+    private const int CurrentCacheFormatVersion = 7;
     private const int MaxVisibleResults = 25;
     private const int WatcherBufferSize = 64 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
@@ -78,7 +78,10 @@ internal sealed class FileSearchService : SearchServiceBase
         m_enableWatchers = true;
         var configuredRoots = settings?.SearchRoots?.Where(root => root != null).ToArray() ?? [];
         m_hasExplicitSearchRoots = configuredRoots.Length > 0;
-        m_searchRoots = (searchRoots?.ToArray() ?? (m_hasExplicitSearchRoots ? configuredRoots : GetDefaultSearchRoots(OperatingSystem.IsWindows())))
+        m_searchRoots = (searchRoots?.ToArray() ?? GetInitialSearchRoots(
+                configuredRoots,
+                m_hasExplicitSearchRoots,
+                OperatingSystem.IsWindows()))
             .ToList();
         var isCompatibleCache = settings?.CacheFormatVersion == CurrentCacheFormatVersion;
         if (settings != null && !isCompatibleCache)
@@ -281,18 +284,33 @@ internal sealed class FileSearchService : SearchServiceBase
         folderPathAccessor ??= Environment.GetFolderPath;
         var homePath = folderPathAccessor(Environment.SpecialFolder.UserProfile);
 
-        var roots = new[]
-        {
-            folderPathAccessor(Environment.SpecialFolder.MyDocuments),
-            folderPathAccessor(Environment.SpecialFolder.MyPictures),
-            string.IsNullOrWhiteSpace(homePath) ? null : Path.Combine(homePath, "Downloads"),
-            isWindows ? folderPathAccessor(Environment.SpecialFolder.CommonDocuments) : null
-        }
+          var roots = new[]
+          {
+              folderPathAccessor(Environment.SpecialFolder.MyDocuments),
+              folderPathAccessor(Environment.SpecialFolder.MyPictures),
+              folderPathAccessor(Environment.SpecialFolder.DesktopDirectory),
+              string.IsNullOrWhiteSpace(homePath) ? null : Path.Combine(homePath, "Downloads"),
+              isWindows ? folderPathAccessor(Environment.SpecialFolder.CommonDocuments) : null
+          }
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .Select(path => path.ToDir())
             .DistinctBy(directory => directory.FullName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         return roots;
+    }
+
+    internal static IReadOnlyList<DirectoryInfo> GetInitialSearchRoots(
+        IEnumerable<DirectoryInfo> configuredRoots,
+        bool hasExplicitSearchRoots,
+        bool isWindows = false,
+        Func<Environment.SpecialFolder, string> folderPathAccessor = null)
+    {
+        var defaultRoots = GetDefaultSearchRoots(isWindows, folderPathAccessor);
+        var mergedRoots = hasExplicitSearchRoots
+            ? (configuredRoots ?? []).Where(root => root != null).Concat(defaultRoots)
+            : defaultRoots;
+
+        return ConsolidateRoots(mergedRoots).ToArray();
     }
 
     private FileDiscoverySnapshot DiscoverFiles(CancellationToken cancellationToken, IReadOnlyDictionary<string, DirtyRootState> dirtyRootStates)

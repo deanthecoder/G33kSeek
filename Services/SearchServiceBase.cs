@@ -25,9 +25,8 @@ namespace G33kSeek.Services;
 internal abstract class SearchServiceBase : IDisposable
 {
     protected readonly SemaphoreSlim m_refreshLock = new(1, 1);
-    private bool m_isRefreshing;
 
-    internal bool IsRefreshing => m_isRefreshing;
+    internal bool IsRefreshing { get; private set; }
 
     internal event EventHandler RefreshStateChanged;
 
@@ -38,10 +37,10 @@ internal abstract class SearchServiceBase : IDisposable
 
     protected void SetIsRefreshing(bool isRefreshing)
     {
-        if (m_isRefreshing == isRefreshing)
+        if (IsRefreshing == isRefreshing)
             return;
 
-        m_isRefreshing = isRefreshing;
+        IsRefreshing = isRefreshing;
         RefreshStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
