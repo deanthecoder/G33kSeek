@@ -194,6 +194,40 @@ public class FileSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncMatchesSpaceSeparatedTokensOutOfOrderInFileName()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        documentsDirectory.GetFile("SpcOpcNodeDocument.html").WriteAllText("content");
+        var service = new FileSearchService([documentsDirectory], [], DateTime.MinValue);
+
+        var results = await service.SearchAsync("spc opc html", CancellationToken.None);
+
+        Assert.That(results.TotalMatchCount, Is.EqualTo(1));
+        Assert.That(results.VisibleFiles.Single().DisplayName, Is.EqualTo("SpcOpcNodeDocument.html"));
+    }
+
+    [Test]
+    public async Task SearchAsyncUsesPathTokensToNarrowDuplicateFileNames()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        var g33kDirectory = documentsDirectory.GetDir("Repos/G33kSeek/Properties");
+        g33kDirectory.Create();
+        g33kDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
+        var otherDirectory = documentsDirectory.GetDir("Repos/OtherProduct/Properties");
+        otherDirectory.Create();
+        otherDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
+        var service = new FileSearchService([documentsDirectory], [], DateTime.MinValue);
+
+        var results = await service.SearchAsync("assemblyinfo g33k", CancellationToken.None);
+
+        Assert.That(results.VisibleFiles, Is.Not.Empty);
+        Assert.That(results.VisibleFiles.First().Subtitle, Is.EqualTo(g33kDirectory.FullName));
+    }
+
+    [Test]
     public async Task SearchAsyncPrefersExactFileNameMatchesOverPathOnlyMatches()
     {
         using var tempDirectory = new TempDirectory();

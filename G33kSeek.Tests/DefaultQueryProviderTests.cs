@@ -238,6 +238,28 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncMatchesSpaceSeparatedFileAndPathTokens()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        var g33kDirectory = documentsDirectory.GetDir("Repos/G33kSeek/Properties");
+        g33kDirectory.Create();
+        g33kDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
+        var otherDirectory = documentsDirectory.GetDir("Repos/OtherProduct/Properties");
+        otherDirectory.Create();
+        otherDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
+        var provider = new DefaultQueryProvider(
+            CreateEmptyApplicationSearchService(),
+            new FileSearchService([documentsDirectory], [], DateTime.UtcNow));
+
+        var response = await provider.QueryAsync(new QueryRequest("assemblyinfo g33k", "assemblyinfo g33k", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Is.Not.Empty);
+        Assert.That(response.Results[0].Title, Is.EqualTo("AssemblyInfo.cs"));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo(g33kDirectory.FullName));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsDirectFileResultForAbsolutePathWithSpaces()
     {
         using var tempDirectory = new TempDirectory();

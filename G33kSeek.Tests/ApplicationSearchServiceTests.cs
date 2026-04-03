@@ -133,6 +133,54 @@ public class ApplicationSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncMatchesSpaceSeparatedNameTokensInOrder()
+    {
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [
+                new IndexedApplication
+                {
+                    DisplayName = "Boot Camp Assistant",
+                    SearchName = "boot camp assistant",
+                    BundleDirectory = new DirectoryInfo("/Applications/Boot Camp Assistant.app")
+                }
+            ],
+            isMacOS: true,
+            isWindows: false,
+            DateTime.UtcNow);
+
+        var results = await service.SearchAsync("boot ass", CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Boot Camp Assistant"));
+    }
+
+    [Test]
+    public async Task SearchAsyncMatchesSpaceSeparatedNameTokensOutOfOrder()
+    {
+        var service = new ApplicationSearchService(
+            [],
+            [],
+            [
+                new IndexedApplication
+                {
+                    DisplayName = "Boot Camp Assistant",
+                    SearchName = "boot camp assistant",
+                    BundleDirectory = new DirectoryInfo("/Applications/Boot Camp Assistant.app")
+                }
+            ],
+            isMacOS: true,
+            isWindows: false,
+            DateTime.UtcNow);
+
+        var results = await service.SearchAsync("ass boot", CancellationToken.None);
+
+        Assert.That(results, Has.Count.EqualTo(1));
+        Assert.That(results[0].DisplayName, Is.EqualTo("Boot Camp Assistant"));
+    }
+
+    [Test]
     public async Task SearchAsyncPrefersTextMatchesOverInitialismMatches()
     {
         var service = new ApplicationSearchService(

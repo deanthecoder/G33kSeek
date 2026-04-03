@@ -396,8 +396,10 @@ internal sealed class ApplicationSearchService : SearchServiceBase
         if (string.IsNullOrWhiteSpace(normalizedQuery))
             return [];
 
+        var queryTokens = GetQueryTokens(normalizedQuery);
+
         return applications
-            .Select(app => new { Application = app, Score = Score(normalizedQuery, app.SearchName) })
+            .Select(app => new { Application = app, Score = Score(normalizedQuery, queryTokens, app.SearchName) })
             .Where(result => result.Score < int.MaxValue)
             .OrderBy(result => result.Score)
             .ThenBy(result => result.Application.DisplayName.Length)
@@ -407,25 +409,41 @@ internal sealed class ApplicationSearchService : SearchServiceBase
             .ToArray();
     }
 
-    private static int Score(string normalizedQuery, string searchName)
+    private static int Score(string normalizedQuery, IReadOnlyList<string> queryTokens, string searchName)
     {
         var acronym = BuildAcronym(searchName);
+        var hasMultipleTokens = queryTokens.Count > 1;
 
         if (searchName == normalizedQuery)
             return 0;
 
-        if (searchName.StartsWith(normalizedQuery, StringComparison.Ordinal))
+        if (!hasMultipleTokens && searchName.StartsWith(normalizedQuery, StringComparison.Ordinal))
             return 10;
 
-        if (searchName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Any(word => word.StartsWith(normalizedQuery, StringComparison.Ordinal)))
+        if (!hasMultipleTokens &&
+            searchName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Any(word => word.StartsWith(normalizedQuery, StringComparison.Ordinal)))
         {
             return 20;
         }
 
-        var index = searchName.IndexOf(normalizedQuery, StringComparison.Ordinal);
-        if (index >= 0)
-            return 30 + index;
+        if (hasMultipleTokens)
+        {
+            if (searchName.Contains(normalizedQuery, StringComparison.Ordinal))
+                return 5 + searchName.IndexOf(normalizedQuery, StringComparison.Ordinal);
+
+            if (FindOrderedTokenMatch(searchName, queryTokens, out var orderedIndex))
+                return 20 + orderedIndex;
+
+            if (AllTokensMatch(searchName, queryTokens))
+                return 30 + GetEarliestTokenIndex(searchName, queryTokens);
+        }
+        else
+        {
+            var index = searchName.IndexOf(normalizedQuery, StringComparison.Ordinal);
+            if (index >= 0)
+                return 30 + index;
+        }
 
         if (acronym == normalizedQuery)
             return 200;
@@ -434,6 +452,46 @@ internal sealed class ApplicationSearchService : SearchServiceBase
             return 210;
 
         return int.MaxValue;
+    }
+
+    private static string[] GetQueryTokens(string normalizedQuery)
+    {
+        return (normalizedQuery ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static bool AllTokensMatch(string text, IReadOnlyList<string> queryTokens)
+    {
+        return queryTokens.All(token => text.Contains(token, StringComparison.Ordinal));
+    }
+
+    private static bool FindOrderedTokenMatch(string text, IReadOnlyList<string> queryTokens, out int firstMatchIndex)
+    {
+        firstMatchIndex = -1;
+        var currentIndex = 0;
+
+        foreach (var queryToken in queryTokens)
+        {
+            var tokenIndex = text.IndexOf(queryToken, currentIndex, StringComparison.Ordinal);
+            if (tokenIndex < 0)
+                return false;
+
+            if (firstMatchIndex < 0)
+                firstMatchIndex = tokenIndex;
+
+            currentIndex = tokenIndex + queryToken.Length;
+        }
+
+        return true;
+    }
+
+    private static int GetEarliestTokenIndex(string text, IReadOnlyList<string> queryTokens)
+    {
+        var indexes = queryTokens
+            .Select(token => text.IndexOf(token, StringComparison.Ordinal))
+            .Where(index => index >= 0)
+            .ToArray();
+        return indexes.Length == 0 ? int.MaxValue : indexes.Min();
     }
 
     private static string BuildAcronym(string searchName)
