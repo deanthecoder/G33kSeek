@@ -10,7 +10,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using DTC.Core.Extensions;
@@ -46,19 +45,19 @@ internal sealed class FileSearchSettings : UserSettingsBase
         set => Set(value ?? []);
     }
 
+    public List<byte[]> DirectorySnapshotChunks
+    {
+        get => Get<List<byte[]>>() ?? [];
+        set => Set(value ?? []);
+    }
+
     public List<IndexedDirectorySnapshot> DirectorySnapshots
     {
-        get
-        {
-            if (DirectorySnapshotsData.Length == 0)
-                return [];
-
-            return JsonConvert.DeserializeObject<List<IndexedDirectorySnapshot>>(DirectorySnapshotsData.DecompressToString(), SerializerSettings) ?? [];
-        }
+        get => LoadDirectorySnapshots(DirectorySnapshotChunks, DirectorySnapshotsData);
         set
         {
-            var serialized = JsonConvert.SerializeObject(value ?? [], Formatting.None, SerializerSettings);
-            DirectorySnapshotsData = serialized.Compress();
+            DirectorySnapshotChunks = CreateDirectorySnapshotChunks(value ?? []);
+            DirectorySnapshotsData = [];
         }
     }
 
@@ -78,6 +77,7 @@ internal sealed class FileSearchSettings : UserSettingsBase
     {
         SearchRoots = [];
         DirectorySnapshotsData = [];
+        DirectorySnapshotChunks = [];
         LastFileRefreshUtc = DateTime.MinValue;
         CacheFormatVersion = 0;
     }
@@ -89,20 +89,120 @@ internal sealed class FileSearchSettings : UserSettingsBase
         DateTime lastRefreshUtc,
         int cacheFormatVersion)
     {
-        var serializeStopwatch = Stopwatch.StartNew();
-        var serializedCache = JsonConvert.SerializeObject(directorySnapshots ?? [], Formatting.None, SerializerSettings);
-        serializeStopwatch.Stop();
-
-        var compressStopwatch = Stopwatch.StartNew();
-        var compressedCache = serializedCache.Compress();
-        compressStopwatch.Stop();
-
         SearchRoots = hasExplicitSearchRoots ? searchRoots?.ToList() ?? [] : [];
-        DirectorySnapshotsData = compressedCache;
+        DirectorySnapshotChunks = CreateDirectorySnapshotChunks(directorySnapshots ?? []);
+        DirectorySnapshotsData = [];
         LastFileRefreshUtc = lastRefreshUtc;
         CacheFormatVersion = cacheFormatVersion;
 
         Save();
+    }
+
+    internal static List<byte[]> CreateDirectorySnapshotChunks(IReadOnlyList<IndexedDirectorySnapshot> directorySnapshots)
+    {
+        var chunks = new List<byte[]>();
+        foreach (var rootSnapshot in directorySnapshots ?? [])
+        {
+            if (rootSnapshot?.Directory == null)
+                continue;
+
+            chunks.Add(SerializeChunk(
+                new DirectorySnapshotChunk
+                {
+                    RootDirectory = rootSnapshot.Directory,
+                    IsRoot = true,
+                    Snapshot = new IndexedDirectorySnapshot
+                    {
+                        Directory = rootSnapshot.Directory,
+                        LastWriteTimeUtc = rootSnapshot.LastWriteTimeUtc,
+                        Entries = rootSnapshot.Entries ?? [],
+                        Children = []
+                    }
+                }));
+
+            foreach (var childSnapshot in rootSnapshot.Children ?? [])
+            {
+                if (childSnapshot?.Directory == null)
+                    continue;
+
+                chunks.Add(SerializeChunk(
+                    new DirectorySnapshotChunk
+                    {
+                        RootDirectory = rootSnapshot.Directory,
+                        Snapshot = childSnapshot
+                    }));
+            }
+        }
+
+        return chunks;
+    }
+
+    internal static List<IndexedDirectorySnapshot> LoadDirectorySnapshots(
+        IReadOnlyList<byte[]> directorySnapshotChunks,
+        byte[] legacyDirectorySnapshotsData = null)
+    {
+        if (directorySnapshotChunks is { Count: > 0 })
+            return LoadDirectorySnapshotsFromChunks(directorySnapshotChunks);
+
+        if (legacyDirectorySnapshotsData is not { Length: > 0 })
+            return [];
+
+        return JsonConvert.DeserializeObject<List<IndexedDirectorySnapshot>>(
+            legacyDirectorySnapshotsData.DecompressToString(),
+            SerializerSettings) ?? [];
+    }
+
+    private static List<IndexedDirectorySnapshot> LoadDirectorySnapshotsFromChunks(IReadOnlyList<byte[]> directorySnapshotChunks)
+    {
+        var rootSnapshots = new List<IndexedDirectorySnapshot>();
+        var rootSnapshotsByPath = new Dictionary<string, IndexedDirectorySnapshot>(StringComparer.OrdinalIgnoreCase);
+        var childChunks = new List<DirectorySnapshotChunk>();
+
+        foreach (var chunkData in directorySnapshotChunks)
+        {
+            var chunk = DeserializeChunk(chunkData);
+            if (chunk?.Snapshot?.Directory == null)
+                continue;
+
+            if (!chunk.IsRoot)
+            {
+                childChunks.Add(chunk);
+                continue;
+            }
+
+            var rootSnapshot = chunk.Snapshot;
+            rootSnapshot.Children ??= [];
+            rootSnapshot.Children.Clear();
+            rootSnapshots.Add(rootSnapshot);
+            rootSnapshotsByPath[rootSnapshot.Directory.FullName] = rootSnapshot;
+        }
+
+        foreach (var childChunk in childChunks)
+        {
+            var rootPath = childChunk.RootDirectory?.FullName;
+            if (rootPath != null && rootSnapshotsByPath.TryGetValue(rootPath, out var rootSnapshot))
+            {
+                rootSnapshot.Children.Add(childChunk.Snapshot);
+                continue;
+            }
+
+            rootSnapshots.Add(childChunk.Snapshot);
+        }
+
+        return rootSnapshots;
+    }
+
+    private static byte[] SerializeChunk(DirectorySnapshotChunk chunk) =>
+        JsonConvert.SerializeObject(chunk, Formatting.None, SerializerSettings).Compress();
+
+    private static DirectorySnapshotChunk DeserializeChunk(byte[] chunkData)
+    {
+        if (chunkData == null || chunkData.Length == 0)
+            return null;
+
+        return JsonConvert.DeserializeObject<DirectorySnapshotChunk>(
+            chunkData.DecompressToString(),
+            SerializerSettings);
     }
 
     private static JsonSerializerSettings CreateSerializerSettings() =>
@@ -115,4 +215,13 @@ internal sealed class FileSearchSettings : UserSettingsBase
                 new StringEnumConverter()
             ]
         };
+
+    private sealed class DirectorySnapshotChunk
+    {
+        public DirectoryInfo RootDirectory { get; set; }
+
+        public bool IsRoot { get; set; }
+
+        public IndexedDirectorySnapshot Snapshot { get; set; }
+    }
 }

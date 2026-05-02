@@ -216,6 +216,80 @@ public class FileSearchServiceTests
     }
 
     [Test]
+    public void FileSearchSettingsChunksDirectorySnapshotsByTopLevelDirectory()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        var invoicesDirectory = documentsDirectory.GetDir("Invoices");
+        var reportsDirectory = documentsDirectory.GetDir("Reports");
+        reportsDirectory.Create();
+        invoicesDirectory.Create();
+        var rootFile = documentsDirectory.GetFile("root.txt");
+        var invoiceFile = invoicesDirectory.GetFile("invoice.pdf");
+        var reportFile = reportsDirectory.GetFile("report.txt");
+        rootFile.WriteAllText("root");
+        invoiceFile.WriteAllText("invoice");
+        reportFile.WriteAllText("report");
+        var snapshots = new[]
+        {
+            new IndexedDirectorySnapshot
+            {
+                Directory = documentsDirectory,
+                LastWriteTimeUtc = documentsDirectory.LastWriteTimeUtc,
+                Entries =
+                [
+                    new IndexedFile
+                    {
+                        DisplayName = rootFile.Name,
+                        File = rootFile
+                    }
+                ],
+                Children =
+                [
+                    new IndexedDirectorySnapshot
+                    {
+                        Directory = invoicesDirectory,
+                        LastWriteTimeUtc = invoicesDirectory.LastWriteTimeUtc,
+                        Entries =
+                        [
+                            new IndexedFile
+                            {
+                                DisplayName = invoiceFile.Name,
+                                File = invoiceFile
+                            }
+                        ]
+                    },
+                    new IndexedDirectorySnapshot
+                    {
+                        Directory = reportsDirectory,
+                        LastWriteTimeUtc = reportsDirectory.LastWriteTimeUtc,
+                        Entries =
+                        [
+                            new IndexedFile
+                            {
+                                DisplayName = reportFile.Name,
+                                File = reportFile
+                            }
+                        ]
+                    }
+                ]
+            }
+        };
+
+        var chunks = FileSearchSettings.CreateDirectorySnapshotChunks(snapshots);
+        var loadedSnapshots = FileSearchSettings.LoadDirectorySnapshots(chunks);
+
+        Assert.That(chunks, Has.Count.EqualTo(3));
+        Assert.That(loadedSnapshots, Has.Count.EqualTo(1));
+        Assert.That(loadedSnapshots[0].Entries.Select(entry => entry.DisplayName), Is.EqualTo(new[] { rootFile.Name }));
+        Assert.That(loadedSnapshots[0].Children.Select(child => child.Directory.FullName), Is.EquivalentTo(new[]
+        {
+            invoicesDirectory.FullName,
+            reportsDirectory.FullName
+        }));
+    }
+
+    [Test]
     public async Task SearchAsyncMatchesSpaceSeparatedTokensOutOfOrderInFileName()
     {
         using var tempDirectory = new TempDirectory();
