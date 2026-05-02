@@ -189,6 +189,7 @@ public sealed class CommandQueryProvider : IQueryProvider
             commands.Add(new CommandDefinition("shutdown", "Shut down the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to shut down\"", "Shutdown requested."));
             commands.Add(new CommandDefinition("restart", "Restart the Mac.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to restart\"", "Restart requested."));
             commands.Add(new CommandDefinition("logoff", "Log out the current user.", "/usr/bin/osascript", "-e \"tell application \\\"System Events\\\" to log out\"", "Log out requested."));
+            commands.Add(new CommandDefinition("sleep", "Put the Mac to sleep.", "/usr/bin/pmset", "sleepnow", "Sleep requested."));
         }
         else if (m_isWindows)
         {
@@ -196,6 +197,7 @@ public sealed class CommandQueryProvider : IQueryProvider
             commands.Add(new CommandDefinition("shutdown", "Shut down Windows immediately.", "shutdown", "/s /t 0", "Shutdown requested."));
             commands.Add(new CommandDefinition("restart", "Restart Windows immediately.", "shutdown", "/r /t 0", "Restart requested."));
             commands.Add(new CommandDefinition("logoff", "Log off the current Windows session.", "shutdown", "/l", "Log off requested."));
+            commands.Add(new CommandDefinition("sleep", "Put Windows to sleep.", "powershell.exe", "-NoProfile -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)\"", "Sleep requested."));
         }
 
         return commands;

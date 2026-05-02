@@ -26,8 +26,8 @@ public class CommandQueryProviderTests
 
         var response = await provider.QueryAsync(new QueryRequest(">", string.Empty, ">"), CancellationToken.None);
 
-        Assert.That(response.Results, Has.Count.EqualTo(14));
-        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "addfolder", "desktop", "documents", "downloads", "exit", "guid", "home", "ip", "lock", "log", "logoff", "refresh", "restart", "shutdown" }));
+        Assert.That(response.Results, Has.Count.EqualTo(15));
+        Assert.That(response.Results.Select(result => result.Title), Is.EqualTo(new[] { "addfolder", "desktop", "documents", "downloads", "exit", "guid", "home", "ip", "lock", "log", "logoff", "refresh", "restart", "shutdown", "sleep" }));
     }
 
     [Test]
@@ -81,6 +81,42 @@ public class CommandQueryProviderTests
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.RunProcess));
         Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("rundll32.exe"));
         Assert.That(response.Results[0].PrimaryAction?.Arguments, Is.EqualTo("user32.dll,LockWorkStation"));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsMacSleepCommand()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = CreateProvider(tempDirectory, ["192.168.1.20"]);
+
+        var response = await provider.QueryAsync(new QueryRequest(">sleep", "sleep", ">"), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("sleep"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.RunProcess));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("/usr/bin/pmset"));
+        Assert.That(response.Results[0].PrimaryAction?.Arguments, Is.EqualTo("sleepnow"));
+    }
+
+    [Test]
+    public async Task QueryAsyncReturnsWindowsSleepCommand()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = new CommandQueryProvider(
+            isMacOS: false,
+            isWindows: true,
+            guidFactory: () => Guid.Parse("11111111-2222-3333-4444-555555555555"),
+            ipAddressesAccessor: () => ["192.168.1.20"],
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory),
+            logFileAccessor: () => tempDirectory.GetFile("log.txt"));
+
+        var response = await provider.QueryAsync(new QueryRequest(">sleep", "sleep", ">"), CancellationToken.None);
+
+        Assert.That(response.Results, Has.Count.EqualTo(1));
+        Assert.That(response.Results[0].Title, Is.EqualTo("sleep"));
+        Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.RunProcess));
+        Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("powershell.exe"));
+        Assert.That(response.Results[0].PrimaryAction?.Arguments, Does.Contain("SetSuspendState"));
     }
 
     [Test]
