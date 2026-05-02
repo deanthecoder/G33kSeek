@@ -61,6 +61,49 @@ public class DefaultQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncWaitsForTwoCharactersBeforeDefaultSearch()
+    {
+        using var tempDirectory = new TempDirectory();
+        var applicationRoot = tempDirectory.GetDir("Applications");
+        applicationRoot.Create();
+        var appBundle = applicationRoot.CreateSubdirectory("A.app");
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        var file = documentsDirectory.GetFile("a.txt");
+        file.WriteAllText("test");
+        var provider = new DefaultQueryProvider(
+            new ApplicationSearchService(
+                [applicationRoot],
+                [],
+                [
+                    new IndexedApplication
+                    {
+                        DisplayName = "A",
+                        SearchName = "a",
+                        BundleDirectory = appBundle
+                    }
+                ],
+                isMacOS: true,
+                isWindows: false,
+                DateTime.UtcNow),
+            new FileSearchService(
+                [documentsDirectory],
+                [
+                    new IndexedFile
+                    {
+                        DisplayName = "a.txt",
+                        File = file
+                    }
+                ],
+                DateTime.UtcNow));
+
+        var response = await provider.QueryAsync(new QueryRequest("a", "a", string.Empty), CancellationToken.None);
+
+        Assert.That(response.Results, Is.Empty);
+        Assert.That(response.StatusText, Is.EqualTo("Keep typing to search apps and files."));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsWindowsStoreApplicationLaunchAction()
     {
         var applicationSearchService = new ApplicationSearchService(
@@ -242,9 +285,9 @@ public class DefaultQueryProviderTests
     {
         using var tempDirectory = new TempDirectory();
         var documentsDirectory = tempDirectory.GetDir("Documents");
-        var g33kDirectory = documentsDirectory.GetDir("Repos/G33kSeek/Properties");
-        g33kDirectory.Create();
-        g33kDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
+        var g33KDirectory = documentsDirectory.GetDir("Repos/G33kSeek/Properties");
+        g33KDirectory.Create();
+        g33KDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
         var otherDirectory = documentsDirectory.GetDir("Repos/OtherProduct/Properties");
         otherDirectory.Create();
         otherDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
@@ -256,7 +299,7 @@ public class DefaultQueryProviderTests
 
         Assert.That(response.Results, Is.Not.Empty);
         Assert.That(response.Results[0].Title, Is.EqualTo("AssemblyInfo.cs"));
-        Assert.That(response.Results[0].Subtitle, Is.EqualTo(g33kDirectory.FullName));
+        Assert.That(response.Results[0].Subtitle, Is.EqualTo(g33KDirectory.FullName));
     }
 
     [Test]

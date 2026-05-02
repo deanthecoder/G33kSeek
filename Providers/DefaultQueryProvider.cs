@@ -28,6 +28,8 @@ namespace G33kSeek.Providers;
 /// </remarks>
 public sealed class DefaultQueryProvider : IQueryProvider
 {
+    private const int MinDefaultSearchLength = 2;
+
     private readonly ApplicationSearchService m_applicationSearchService;
     private readonly FileSearchService m_fileSearchService;
     private readonly UnitConversionService m_unitConversionService;
@@ -76,6 +78,14 @@ public sealed class DefaultQueryProvider : IQueryProvider
 
         if (TryCreateUnitConversionResponse(query, out var unitConversionResponse))
             return Task.FromResult(unitConversionResponse);
+
+        if (query.Length < MinDefaultSearchLength)
+        {
+            return Task.FromResult(
+                new QueryResponse(
+                    [],
+                    "Keep typing to search apps and files."));
+        }
 
         return QueryDefaultSearchAsync(query, cancellationToken);
     }

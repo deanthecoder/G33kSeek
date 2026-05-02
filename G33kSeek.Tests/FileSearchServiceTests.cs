@@ -235,9 +235,9 @@ public class FileSearchServiceTests
     {
         using var tempDirectory = new TempDirectory();
         var documentsDirectory = tempDirectory.GetDir("Documents");
-        var g33kDirectory = documentsDirectory.GetDir("Repos/G33kSeek/Properties");
-        g33kDirectory.Create();
-        g33kDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
+        var g33KDirectory = documentsDirectory.GetDir("Repos/G33kSeek/Properties");
+        g33KDirectory.Create();
+        g33KDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
         var otherDirectory = documentsDirectory.GetDir("Repos/OtherProduct/Properties");
         otherDirectory.Create();
         otherDirectory.GetFile("AssemblyInfo.cs").WriteAllText("content");
@@ -246,7 +246,7 @@ public class FileSearchServiceTests
         var results = await service.SearchAsync("assemblyinfo g33k", CancellationToken.None);
 
         Assert.That(results.VisibleFiles, Is.Not.Empty);
-        Assert.That(results.VisibleFiles.First().Subtitle, Is.EqualTo(g33kDirectory.FullName));
+        Assert.That(results.VisibleFiles.First().Subtitle, Is.EqualTo(g33KDirectory.FullName));
     }
 
     [Test]
