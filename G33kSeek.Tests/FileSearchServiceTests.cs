@@ -194,6 +194,28 @@ public class FileSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsyncDoesNotAppendCachedSearchTextWhenPreparingMetadata()
+    {
+        using var tempDirectory = new TempDirectory();
+        var documentsDirectory = tempDirectory.GetDir("Documents");
+        documentsDirectory.Create();
+        var invoiceFile = documentsDirectory.GetFile("invoice.pdf");
+        invoiceFile.WriteAllText("content");
+        var staleCachedFile = new IndexedFile
+        {
+            DisplayName = "invoice.pdf",
+            SearchText = "invoice pdf zzzinflatedtoken metadata",
+            File = invoiceFile
+        };
+        var service = new FileSearchService([documentsDirectory], [staleCachedFile], DateTime.UtcNow);
+
+        var results = await service.SearchAsync("zzzinflatedtoken", CancellationToken.None);
+
+        Assert.That(results.VisibleFiles, Is.Empty);
+        Assert.That(staleCachedFile.SearchText, Does.Not.Contain("zzzinflatedtoken"));
+    }
+
+    [Test]
     public async Task SearchAsyncMatchesSpaceSeparatedTokensOutOfOrderInFileName()
     {
         using var tempDirectory = new TempDirectory();

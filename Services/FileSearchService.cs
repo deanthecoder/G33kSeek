@@ -29,7 +29,7 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchService : SearchServiceBase
 {
-    private const int CurrentCacheFormatVersion = 7;
+    private const int CurrentCacheFormatVersion = 8;
     private const int MaxVisibleResults = 25;
     private const int WatcherBufferSize = 64 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);
@@ -1014,7 +1014,7 @@ internal sealed class FileSearchService : SearchServiceBase
     private static void PopulateSearchMetadata(IndexedFile indexedFile)
     {
         var fullPath = indexedFile.FullPath;
-        indexedFile.SearchText = Normalize($"{indexedFile.DisplayName} {fullPath} {indexedFile.SearchText}");
+        indexedFile.SearchText = Normalize($"{indexedFile.DisplayName} {fullPath}");
         indexedFile.SearchTextCharacterMask = BuildCharacterMask(indexedFile.SearchText);
         indexedFile.NormalizedDisplayName = Normalize(indexedFile.DisplayName);
         indexedFile.DisplayNameWords = SplitWords(indexedFile.NormalizedDisplayName);
