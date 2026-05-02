@@ -29,7 +29,7 @@ namespace G33kSeek.Services;
 /// </remarks>
 internal sealed class FileSearchService : SearchServiceBase
 {
-    private const int CurrentCacheFormatVersion = 8;
+    private const int CurrentCacheFormatVersion = 9;
     private const int MaxVisibleResults = 25;
     private const int WatcherBufferSize = 64 * 1024;
     private static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(10);

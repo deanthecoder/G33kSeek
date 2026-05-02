@@ -65,8 +65,13 @@ public class IndexedFileTests
         {
             DisplayName = "report.txt",
             SearchText = "report txt",
+            NormalizedDisplayName = "report txt",
+            DisplayNameWords = ["report", "txt"],
             File = new FileInfo(@"C:\Docs\report.txt")
         };
+        indexedFile.PathSegments = ["C:", "Docs", "report.txt"];
+        indexedFile.NormalizedPathSegments = ["c", "docs", "report.txt"];
+        indexedFile.SearchTextCharacterMask = 123;
 
         var json = JsonConvert.SerializeObject(
             indexedFile,
@@ -82,6 +87,12 @@ public class IndexedFileTests
         Assert.That(json, Does.Not.Contain("IsDirectory"));
         Assert.That(json, Does.Not.Contain("Subtitle"));
         Assert.That(json, Does.Not.Contain("FullPath"));
+        Assert.That(json, Does.Not.Contain("SearchText"));
+        Assert.That(json, Does.Not.Contain("NormalizedDisplayName"));
+        Assert.That(json, Does.Not.Contain("DisplayNameWords"));
+        Assert.That(json, Does.Not.Contain("PathSegments"));
+        Assert.That(json, Does.Not.Contain("NormalizedPathSegments"));
+        Assert.That(json, Does.Not.Contain("SearchTextCharacterMask"));
         Assert.That(json, Does.Contain("File"));
     }
 }
