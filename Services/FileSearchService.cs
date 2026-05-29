@@ -333,6 +333,7 @@ internal sealed class FileSearchService : SearchServiceBase
             .Where(snapshot => snapshot?.Directory != null)
             .ToDictionary(snapshot => snapshot.Directory.FullName, StringComparer.OrdinalIgnoreCase);
         var refreshedSnapshots = new List<IndexedDirectorySnapshot>();
+        var normalizedPathSegmentCache = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var rootDirectory in m_searchRoots
                      .Where(root => root?.Exists() == true)
@@ -347,6 +348,7 @@ internal sealed class FileSearchService : SearchServiceBase
                 dirtyRootState,
                 depth: 0,
                 cancellationToken,
+                normalizedPathSegmentCache,
                 ref visitedDirectoryCount,
                 ref rebuiltDirectoryCount,
                 ref reusedDirectoryCount);
@@ -502,7 +504,7 @@ internal sealed class FileSearchService : SearchServiceBase
             return new FileSearchResult([], 0);
 
         var queryTokens = GetQueryTokens(normalizedQuery);
-        var queryCharacterMask = BuildCharacterMask(string.Concat(queryTokens));
+        var queryCharacterMask = BuildCharacterMask(queryTokens);
         var totalMatchCount = 0;
         var matchingFiles = new List<IndexedFile>();
         var bestMatches = new List<(IndexedFile File, FileSortKey SortKey)>(MaxVisibleResults);
@@ -514,7 +516,7 @@ internal sealed class FileSearchService : SearchServiceBase
                 continue;
             }
 
-            if (!MatchesQuery(file.SearchText, normalizedQuery, queryTokens))
+            if (!MatchesQuery(file, normalizedQuery, queryTokens))
                 continue;
 
             var sortKey = BuildSortKey(normalizedQuery, queryTokens, file);
@@ -545,10 +547,8 @@ internal sealed class FileSearchService : SearchServiceBase
         if (displayName.StartsWith(normalizedQuery, StringComparison.Ordinal))
             return new FileSortKey(1, typePriority, 0, segmentScore, segmentDistanceFromLeaf);
 
-        if (file.DisplayNameWords.Any(word => word.StartsWith(normalizedQuery, StringComparison.Ordinal)))
-        {
+        if (HasWordStartingWith(displayName, normalizedQuery))
             return new FileSortKey(2, typePriority, 0, segmentScore, segmentDistanceFromLeaf);
-        }
 
         if (displayNameIndex >= 0)
             return new FileSortKey(3, typePriority, displayNameIndex, segmentScore, segmentDistanceFromLeaf);
@@ -562,14 +562,13 @@ internal sealed class FileSearchService : SearchServiceBase
     private static FileSortKey BuildMultiTermSortKey(string normalizedQuery, IReadOnlyList<string> queryTokens, IndexedFile file)
     {
         var displayName = file.NormalizedDisplayName;
-        var searchText = file.SearchText;
         var typePriority = displayName == normalizedQuery && !file.IsDirectory ? 0 : file.IsDirectory ? 1 : 0;
 
         var hasContiguousDisplayNameMatch = displayName.Contains(normalizedQuery, StringComparison.Ordinal);
         var allTokensInDisplayName = AllTokensMatch(displayName, queryTokens);
         var orderedDisplayNameMatch = FindOrderedTokenMatch(displayName, queryTokens, out var displayNameOrderedIndex);
-        var allTokensInSearchText = AllTokensMatch(searchText, queryTokens);
-        var orderedSearchTextMatch = FindOrderedTokenMatch(searchText, queryTokens, out var searchTextOrderedIndex);
+        var allTokensInSearchIndex = AllTokensMatch(file, queryTokens);
+        var orderedSearchIndexMatch = FindOrderedTokenMatch(file, queryTokens, out var searchIndexOrderedIndex);
         var segmentScore = GetPathSegmentMatchScore(normalizedQuery, file, out var segmentDistanceFromLeaf);
         var displayNameTokenCount = CountMatchingTokens(displayName, queryTokens);
 
@@ -582,17 +581,17 @@ internal sealed class FileSearchService : SearchServiceBase
         if (allTokensInDisplayName)
             return new FileSortKey(2, typePriority, GetEarliestTokenIndex(displayName, queryTokens), segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
 
-        if (orderedSearchTextMatch && displayNameTokenCount > 0)
-            return new FileSortKey(3, typePriority, searchTextOrderedIndex, segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
+        if (orderedSearchIndexMatch && displayNameTokenCount > 0)
+            return new FileSortKey(3, typePriority, searchIndexOrderedIndex, segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
 
-        if (allTokensInSearchText && displayNameTokenCount > 0)
-            return new FileSortKey(4, typePriority, GetEarliestTokenIndex(searchText, queryTokens), segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
+        if (allTokensInSearchIndex && displayNameTokenCount > 0)
+            return new FileSortKey(4, typePriority, GetEarliestTokenIndex(file, queryTokens), segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
 
-        if (orderedSearchTextMatch)
-            return new FileSortKey(5, typePriority, searchTextOrderedIndex, segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
+        if (orderedSearchIndexMatch)
+            return new FileSortKey(5, typePriority, searchIndexOrderedIndex, segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
 
-        if (allTokensInSearchText)
-            return new FileSortKey(6, typePriority, GetEarliestTokenIndex(searchText, queryTokens), segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
+        if (allTokensInSearchIndex)
+            return new FileSortKey(6, typePriority, GetEarliestTokenIndex(file, queryTokens), segmentScore, segmentDistanceFromLeaf, displayNameTokenCount);
 
         return null;
     }
@@ -650,12 +649,46 @@ internal sealed class FileSearchService : SearchServiceBase
 
     private static string Normalize(string text)
     {
-        return new string(
-            (text ?? string.Empty)
-                .Trim()
-                .ToLowerInvariant()
-                .Where(character => char.IsLetterOrDigit(character) || char.IsWhiteSpace(character) || character == '.')
-                .ToArray());
+        if (string.IsNullOrWhiteSpace(text))
+            return string.Empty;
+
+        var startIndex = 0;
+        var endIndex = text.Length - 1;
+        while (startIndex <= endIndex && char.IsWhiteSpace(text[startIndex]))
+            startIndex++;
+
+        while (endIndex >= startIndex && char.IsWhiteSpace(text[endIndex]))
+            endIndex--;
+
+        var normalizedLength = 0;
+        for (var index = startIndex; index <= endIndex; index++)
+        {
+            var character = text[index];
+            if (IsSearchCharacter(character))
+                normalizedLength++;
+        }
+
+        if (normalizedLength == 0)
+            return string.Empty;
+
+        return string.Create(
+            normalizedLength,
+            (Text: text, StartIndex: startIndex, EndIndex: endIndex),
+            static (buffer, state) =>
+            {
+                var writeIndex = 0;
+                for (var index = state.StartIndex; index <= state.EndIndex; index++)
+                {
+                    var character = state.Text[index];
+                    if (IsSearchCharacter(character))
+                        buffer[writeIndex++] = char.ToLowerInvariant(character);
+                }
+            });
+    }
+
+    private static bool IsSearchCharacter(char character)
+    {
+        return char.IsLetterOrDigit(character) || char.IsWhiteSpace(character) || character == '.';
     }
 
     private static string[] GetQueryTokens(string normalizedQuery)
@@ -664,12 +697,12 @@ internal sealed class FileSearchService : SearchServiceBase
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    private static bool MatchesQuery(string searchText, string normalizedQuery, IReadOnlyList<string> queryTokens)
+    private static bool MatchesQuery(IndexedFile file, string normalizedQuery, IReadOnlyList<string> queryTokens)
     {
         if (queryTokens.Count <= 1)
-            return searchText.Contains(normalizedQuery, StringComparison.Ordinal);
+            return ContainsSearchText(file, normalizedQuery);
 
-        return AllTokensMatch(searchText, queryTokens);
+        return AllTokensMatch(file, queryTokens);
     }
 
     private static ulong BuildCharacterMask(string normalizedText)
@@ -677,6 +710,24 @@ internal sealed class FileSearchService : SearchServiceBase
         var mask = 0UL;
         foreach (var character in normalizedText ?? string.Empty)
             mask |= GetCharacterBit(character);
+
+        return mask;
+    }
+
+    private static ulong BuildCharacterMask(IndexedFile file)
+    {
+        var mask = BuildCharacterMask(file.NormalizedDisplayName);
+        foreach (var pathSegment in file.NormalizedPathSegments)
+            mask |= BuildCharacterMask(pathSegment);
+
+        return mask;
+    }
+
+    private static ulong BuildCharacterMask(IEnumerable<string> normalizedTexts)
+    {
+        var mask = 0UL;
+        foreach (var normalizedText in normalizedTexts)
+            mask |= BuildCharacterMask(normalizedText);
 
         return mask;
     }
@@ -732,6 +783,40 @@ internal sealed class FileSearchService : SearchServiceBase
         return queryTokens.All(token => text.Contains(token, StringComparison.Ordinal));
     }
 
+    private static bool AllTokensMatch(IndexedFile file, IReadOnlyList<string> queryTokens)
+    {
+        return queryTokens.All(token => ContainsSearchText(file, token));
+    }
+
+    private static bool ContainsSearchText(IndexedFile file, string normalizedQuery)
+    {
+        return file.NormalizedDisplayName.Contains(normalizedQuery, StringComparison.Ordinal) ||
+               file.NormalizedPathSegments.Any(segment => segment.Contains(normalizedQuery, StringComparison.Ordinal));
+    }
+
+    private static bool HasWordStartingWith(string text, string query)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(query))
+            return false;
+
+        var isWordStart = true;
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (char.IsWhiteSpace(text[index]))
+            {
+                isWordStart = true;
+                continue;
+            }
+
+            if (isWordStart && text.AsSpan(index).StartsWith(query.AsSpan(), StringComparison.Ordinal))
+                return true;
+
+            isWordStart = false;
+        }
+
+        return false;
+    }
+
     private static bool FindOrderedTokenMatch(string text, IReadOnlyList<string> queryTokens, out int firstMatchIndex)
     {
         firstMatchIndex = -1;
@@ -747,6 +832,39 @@ internal sealed class FileSearchService : SearchServiceBase
                 firstMatchIndex = tokenIndex;
 
             currentIndex = tokenIndex + queryToken.Length;
+        }
+
+        return true;
+    }
+
+    private static bool FindOrderedTokenMatch(IndexedFile file, IReadOnlyList<string> queryTokens, out int firstMatchIndex)
+    {
+        firstMatchIndex = -1;
+        var currentSegmentIndex = 0;
+        var currentCharacterIndex = 0;
+
+        foreach (var queryToken in queryTokens)
+        {
+            var isMatched = false;
+            for (var segmentIndex = currentSegmentIndex; segmentIndex < file.NormalizedPathSegments.Length + 1; segmentIndex++)
+            {
+                var segment = GetSearchSegment(file, segmentIndex);
+                var startIndex = segmentIndex == currentSegmentIndex ? currentCharacterIndex : 0;
+                var tokenIndex = segment.IndexOf(queryToken, startIndex, StringComparison.Ordinal);
+                if (tokenIndex < 0)
+                    continue;
+
+                if (firstMatchIndex < 0)
+                    firstMatchIndex = GetPathTokenPosition(segmentIndex, tokenIndex);
+
+                currentSegmentIndex = segmentIndex;
+                currentCharacterIndex = tokenIndex + queryToken.Length;
+                isMatched = true;
+                break;
+            }
+
+            if (!isMatched)
+                return false;
         }
 
         return true;
@@ -773,12 +891,42 @@ internal sealed class FileSearchService : SearchServiceBase
         return indexes.Length == 0 ? int.MaxValue : indexes.Min();
     }
 
+    private static int GetEarliestTokenIndex(IndexedFile file, IReadOnlyList<string> queryTokens)
+    {
+        var earliestIndex = int.MaxValue;
+        for (var segmentIndex = 0; segmentIndex < file.NormalizedPathSegments.Length + 1; segmentIndex++)
+        {
+            var segment = GetSearchSegment(file, segmentIndex);
+            foreach (var queryToken in queryTokens)
+            {
+                var tokenIndex = segment.IndexOf(queryToken, StringComparison.Ordinal);
+                if (tokenIndex >= 0)
+                    earliestIndex = Math.Min(earliestIndex, GetPathTokenPosition(segmentIndex, tokenIndex));
+            }
+        }
+
+        return earliestIndex;
+    }
+
+    private static int GetPathTokenPosition(int segmentIndex, int tokenIndex)
+    {
+        return segmentIndex * 10_000 + tokenIndex;
+    }
+
+    private static string GetSearchSegment(IndexedFile file, int segmentIndex)
+    {
+        return segmentIndex < file.NormalizedPathSegments.Length
+            ? file.NormalizedPathSegments[segmentIndex]
+            : file.NormalizedDisplayName;
+    }
+
     private static IndexedDirectorySnapshot RefreshDirectorySnapshot(
         DirectoryInfo directory,
         IndexedDirectorySnapshot existingSnapshot,
         DirtyRootState dirtyRootState,
         int depth,
         CancellationToken cancellationToken,
+        Dictionary<string, string> normalizedPathSegmentCache,
         ref int visitedDirectoryCount,
         ref int rebuiltDirectoryCount,
         ref int reusedDirectoryCount)
@@ -836,6 +984,7 @@ internal sealed class FileSearchService : SearchServiceBase
                         dirtyRootState,
                         depth + 1,
                         cancellationToken,
+                        normalizedPathSegmentCache,
                         ref visitedDirectoryCount,
                         ref rebuiltDirectoryCount,
                         ref reusedDirectoryCount);
@@ -868,7 +1017,7 @@ internal sealed class FileSearchService : SearchServiceBase
                 if (!ShouldIncludeDirectory(childDirectory))
                     continue;
 
-                directEntries.Add(CreateIndexedDirectory(childDirectory));
+                directEntries.Add(CreateIndexedDirectory(childDirectory, normalizedPathSegmentCache));
 
                 if (TryReuseCleanTopLevelBucket(
                         childDirectory,
@@ -890,6 +1039,7 @@ internal sealed class FileSearchService : SearchServiceBase
                     dirtyRootState,
                     depth + 1,
                     cancellationToken,
+                    normalizedPathSegmentCache,
                     ref visitedDirectoryCount,
                     ref rebuiltDirectoryCount,
                     ref reusedDirectoryCount);
@@ -902,7 +1052,7 @@ internal sealed class FileSearchService : SearchServiceBase
                 if (!ShouldIncludeFile(childFile))
                     continue;
 
-                directEntries.Add(CreateIndexedFile(childFile));
+                directEntries.Add(CreateIndexedFile(childFile, normalizedPathSegmentCache));
             }
         }
         catch
@@ -936,13 +1086,20 @@ internal sealed class FileSearchService : SearchServiceBase
 
     private static List<IndexedFile> PrepareIndexedFiles(IEnumerable<IndexedFile> cachedFiles)
     {
+        return PrepareIndexedFiles(cachedFiles, new Dictionary<string, string>(StringComparer.Ordinal));
+    }
+
+    private static List<IndexedFile> PrepareIndexedFiles(
+        IEnumerable<IndexedFile> cachedFiles,
+        Dictionary<string, string> normalizedPathSegmentCache)
+    {
         if (cachedFiles == null)
             return [];
 
         var preparedFiles = new List<IndexedFile>();
         foreach (var cachedFile in cachedFiles.Where(file => file != null))
         {
-            PopulateSearchMetadata(cachedFile);
+            PopulateSearchMetadata(cachedFile, normalizedPathSegmentCache);
             preparedFiles.Add(cachedFile);
         }
 
@@ -951,14 +1108,21 @@ internal sealed class FileSearchService : SearchServiceBase
 
     private static List<IndexedDirectorySnapshot> PrepareDirectorySnapshots(IEnumerable<IndexedDirectorySnapshot> cachedDirectorySnapshots)
     {
+        return PrepareDirectorySnapshots(cachedDirectorySnapshots, new Dictionary<string, string>(StringComparer.Ordinal));
+    }
+
+    private static List<IndexedDirectorySnapshot> PrepareDirectorySnapshots(
+        IEnumerable<IndexedDirectorySnapshot> cachedDirectorySnapshots,
+        Dictionary<string, string> normalizedPathSegmentCache)
+    {
         if (cachedDirectorySnapshots == null)
             return [];
 
         var preparedSnapshots = new List<IndexedDirectorySnapshot>();
         foreach (var cachedDirectorySnapshot in cachedDirectorySnapshots.Where(snapshot => snapshot?.Directory != null))
         {
-            cachedDirectorySnapshot.Entries = PrepareIndexedFiles(cachedDirectorySnapshot.Entries);
-            cachedDirectorySnapshot.Children = PrepareDirectorySnapshots(cachedDirectorySnapshot.Children);
+            cachedDirectorySnapshot.Entries = PrepareIndexedFiles(cachedDirectorySnapshot.Entries, normalizedPathSegmentCache);
+            cachedDirectorySnapshot.Children = PrepareDirectorySnapshots(cachedDirectorySnapshot.Children, normalizedPathSegmentCache);
             preparedSnapshots.Add(cachedDirectorySnapshot);
         }
 
@@ -989,40 +1153,39 @@ internal sealed class FileSearchService : SearchServiceBase
             AddSnapshotEntries(childSnapshot, flattenedFiles);
     }
 
-    private static IndexedFile CreateIndexedDirectory(DirectoryInfo directory)
+    private static IndexedFile CreateIndexedDirectory(
+        DirectoryInfo directory,
+        Dictionary<string, string> normalizedPathSegmentCache)
     {
         var indexedFile = new IndexedFile
         {
             DisplayName = directory.Name,
             Directory = directory
         };
-        PopulateSearchMetadata(indexedFile);
+        PopulateSearchMetadata(indexedFile, normalizedPathSegmentCache);
         return indexedFile;
     }
 
-    private static IndexedFile CreateIndexedFile(FileInfo file)
+    private static IndexedFile CreateIndexedFile(
+        FileInfo file,
+        Dictionary<string, string> normalizedPathSegmentCache)
     {
         var indexedFile = new IndexedFile
         {
             DisplayName = file.Name,
             File = file
         };
-        PopulateSearchMetadata(indexedFile);
+        PopulateSearchMetadata(indexedFile, normalizedPathSegmentCache);
         return indexedFile;
     }
 
-    private static void PopulateSearchMetadata(IndexedFile indexedFile)
+    private static void PopulateSearchMetadata(
+        IndexedFile indexedFile,
+        Dictionary<string, string> normalizedPathSegmentCache)
     {
-        var fullPath = indexedFile.FullPath;
-        indexedFile.SearchText = Normalize($"{indexedFile.DisplayName} {fullPath}");
-        indexedFile.SearchTextCharacterMask = BuildCharacterMask(indexedFile.SearchText);
         indexedFile.NormalizedDisplayName = Normalize(indexedFile.DisplayName);
-        indexedFile.DisplayNameWords = SplitWords(indexedFile.NormalizedDisplayName);
-        indexedFile.PathSegments = SplitPathSegments(fullPath);
-        indexedFile.NormalizedPathSegments = indexedFile.PathSegments
-            .Select(Normalize)
-            .Where(segment => !string.IsNullOrWhiteSpace(segment))
-            .ToArray();
+        indexedFile.NormalizedPathSegments = SplitNormalizedPathSegments(GetParentPath(indexedFile), normalizedPathSegmentCache);
+        indexedFile.SearchTextCharacterMask = BuildCharacterMask(indexedFile);
     }
 
     private IReadOnlyList<IndexedFile> GetCandidateSearchSet(string normalizedQuery)
@@ -1058,18 +1221,37 @@ internal sealed class FileSearchService : SearchServiceBase
         }
     }
 
-    private static string[] SplitWords(string normalizedText)
+    private static string[] SplitNormalizedPathSegments(
+        string fullPath,
+        Dictionary<string, string> normalizedPathSegmentCache)
     {
-        return normalizedText
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries);
-    }
-
-    private static string[] SplitPathSegments(string fullPath)
-    {
-        return fullPath
+        return (fullPath ?? string.Empty)
             .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            .Select(segment => GetCachedNormalizedPathSegment(segment, normalizedPathSegmentCache))
             .Where(segment => !string.IsNullOrWhiteSpace(segment))
             .ToArray();
+    }
+
+    private static string GetParentPath(IndexedFile indexedFile)
+    {
+        return indexedFile.IsDirectory
+            ? indexedFile.Directory?.Parent?.FullName ?? string.Empty
+            : indexedFile.File?.DirectoryName ?? string.Empty;
+    }
+
+    private static string GetCachedNormalizedPathSegment(
+        string pathSegment,
+        Dictionary<string, string> normalizedPathSegmentCache)
+    {
+        var normalizedSegment = Normalize(pathSegment);
+        if (string.IsNullOrWhiteSpace(normalizedSegment))
+            return string.Empty;
+
+        if (normalizedPathSegmentCache.TryGetValue(normalizedSegment, out var cachedSegment))
+            return cachedSegment;
+
+        normalizedPathSegmentCache[normalizedSegment] = normalizedSegment;
+        return normalizedSegment;
     }
 
     internal sealed record FileRefreshMetrics(

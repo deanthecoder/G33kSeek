@@ -147,7 +147,6 @@ public class DefaultQueryProviderTests
                     new IndexedFile
                     {
                         DisplayName = "invoice.pdf",
-                        SearchText = "invoice pdf documents",
                         File = invoiceFile
                     }
                 ],
@@ -178,7 +177,6 @@ public class DefaultQueryProviderTests
                     new IndexedFile
                     {
                         DisplayName = "invoice.pdf",
-                        SearchText = "invoice pdf documents",
                         File = invoiceFile
                     }
                 ],
@@ -206,7 +204,6 @@ public class DefaultQueryProviderTests
                     return new IndexedFile
                     {
                         DisplayName = $"AssemblyInfo{index}.cs",
-                        SearchText = $"assemblyinfo{index} cs {documentsDirectory.FullName}",
                         File = file
                     };
                 })
@@ -236,7 +233,6 @@ public class DefaultQueryProviderTests
                     return new IndexedFile
                     {
                         DisplayName = $"AssemblyInfo{index}.cs",
-                        SearchText = $"assemblyinfo{index} cs {documentsDirectory.FullName}",
                         File = file
                     };
                 })
@@ -266,7 +262,6 @@ public class DefaultQueryProviderTests
                     new IndexedFile
                     {
                         DisplayName = "Invoices",
-                        SearchText = $"invoices {invoicesDirectory.FullName}",
                         Directory = invoicesDirectory
                     }
                 ],

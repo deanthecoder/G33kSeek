@@ -194,7 +194,7 @@ public class FileSearchServiceTests
     }
 
     [Test]
-    public async Task SearchAsyncDoesNotAppendCachedSearchTextWhenPreparingMetadata()
+    public async Task SearchAsyncDoesNotUseStaleCachedSearchMetadata()
     {
         using var tempDirectory = new TempDirectory();
         var documentsDirectory = tempDirectory.GetDir("Documents");
@@ -204,15 +204,16 @@ public class FileSearchServiceTests
         var staleCachedFile = new IndexedFile
         {
             DisplayName = "invoice.pdf",
-            SearchText = "invoice pdf zzzinflatedtoken metadata",
             File = invoiceFile
         };
+        staleCachedFile.NormalizedPathSegments = ["zzzinflatedtoken"];
+        staleCachedFile.SearchTextCharacterMask = ulong.MaxValue;
         var service = new FileSearchService([documentsDirectory], [staleCachedFile], DateTime.UtcNow);
 
         var results = await service.SearchAsync("zzzinflatedtoken", CancellationToken.None);
 
         Assert.That(results.VisibleFiles, Is.Empty);
-        Assert.That(staleCachedFile.SearchText, Does.Not.Contain("zzzinflatedtoken"));
+        Assert.That(staleCachedFile.NormalizedPathSegments, Does.Not.Contain("zzzinflatedtoken"));
     }
 
     [Test]

@@ -199,8 +199,7 @@ public sealed class EmojiQueryProvider : IQueryProvider
         var rawQuery = trimmedQuery.TrimStart(':');
         var normalizedQuery = Normalize(rawQuery);
 
-        var exactRawAliases = entry.RawAliases.Where(alias => string.Equals(alias, rawQuery, StringComparison.OrdinalIgnoreCase)).ToArray();
-        if (exactRawAliases.Length != 0)
+        if (entry.RawAliases.Any(alias => string.Equals(alias, rawQuery, StringComparison.OrdinalIgnoreCase)))
             return 0;
 
         var exactAliases = entry.NormalizedAliases.Where(alias => alias == normalizedQuery).ToArray();

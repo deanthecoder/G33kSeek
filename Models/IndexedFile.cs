@@ -26,13 +26,7 @@ internal sealed class IndexedFile
     public string DisplayName { get; set; } = string.Empty;
 
     [JsonIgnore]
-    public string SearchText { get; set; } = string.Empty;
-
-    [JsonIgnore]
     public string NormalizedDisplayName { get; set; } = string.Empty;
-
-    [JsonIgnore]
-    public string[] DisplayNameWords { get; set; } = [];
 
     public FileInfo File { get; set; }
 
@@ -46,9 +40,6 @@ internal sealed class IndexedFile
 
     [JsonIgnore]
     public string FullPath => IsDirectory ? Directory?.FullName ?? string.Empty : File?.FullName ?? string.Empty;
-
-    [JsonIgnore]
-    public string[] PathSegments { get; set; } = [];
 
     [JsonIgnore]
     public string[] NormalizedPathSegments { get; set; } = [];
