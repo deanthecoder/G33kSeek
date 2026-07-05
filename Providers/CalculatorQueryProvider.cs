@@ -16,6 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using G33kSeek.Models;
 using NCalc;
+using NCalc.Handlers;
 
 namespace G33kSeek.Providers;
 
@@ -100,12 +101,12 @@ public sealed class CalculatorQueryProvider : IQueryProvider
             },
             Functions = new Dictionary<string, ExpressionFunction>(StringComparer.OrdinalIgnoreCase)
             {
-                ["sin"] = arguments => Math.Sin(ToDouble(arguments[0].Evaluate())),
-                ["cos"] = arguments => Math.Cos(ToDouble(arguments[0].Evaluate())),
-                ["tan"] = arguments => Math.Tan(ToDouble(arguments[0].Evaluate())),
-                ["asin"] = arguments => Math.Asin(ToDouble(arguments[0].Evaluate())),
-                ["acos"] = arguments => Math.Acos(ToDouble(arguments[0].Evaluate())),
-                ["atan"] = arguments => Math.Atan(ToDouble(arguments[0].Evaluate()))
+                ["sin"] = arguments => Math.Sin(ToDouble(arguments.Evaluate(0))),
+                ["cos"] = arguments => Math.Cos(ToDouble(arguments.Evaluate(0))),
+                ["tan"] = arguments => Math.Tan(ToDouble(arguments.Evaluate(0))),
+                ["asin"] = arguments => Math.Asin(ToDouble(arguments.Evaluate(0))),
+                ["acos"] = arguments => Math.Acos(ToDouble(arguments.Evaluate(0))),
+                ["atan"] = arguments => Math.Atan(ToDouble(arguments.Evaluate(0)))
             }
         };
 
