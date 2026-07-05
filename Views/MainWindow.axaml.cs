@@ -9,6 +9,7 @@
 // THE SOFTWARE IS PROVIDED AS IS, WITHOUT WARRANTY OF ANY KIND.
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -27,6 +28,7 @@ public partial class MainWindow : Window
     private const int DefaultVisibleLauncherHeight = 220;
 
     private readonly MainWindowViewModel m_viewModel;
+    private readonly SemaphoreSlim m_executionGate = new(1, 1);
 
     [UsedImplicitly]
     public MainWindow()
@@ -64,7 +66,10 @@ public partial class MainWindow : Window
     public void HideLauncher()
     {
         m_viewModel.SearchText = string.Empty;
-        Dispatcher.UIThread.InvokeAsync(Hide);
+        if (Dispatcher.UIThread.CheckAccess())
+            Hide();
+        else
+            Dispatcher.UIThread.Post(Hide);
     }
 
     private void OnDeactivated(object sender, EventArgs e) =>
@@ -132,8 +137,7 @@ public partial class MainWindow : Window
         if (m_viewModel.SelectedResult == null)
             return;
 
-        var executionResult = await QueryExecutionService.ExecuteAsync(m_viewModel.SelectedResult, this);
-        ApplyExecutionResult(executionResult);
+        await ExecuteResultAsync(m_viewModel.SelectedResult);
     }
 
     private async Task ExecuteActionAsync(QueryActionDescriptor action)
@@ -141,10 +145,27 @@ public partial class MainWindow : Window
         if (action == null)
             return;
 
-        var executionResult = await QueryExecutionService.ExecuteAsync(
-            new QueryResult(string.Empty, primaryAction: action),
-            this);
-        ApplyExecutionResult(executionResult);
+        await ExecuteResultAsync(new QueryResult(string.Empty, primaryAction: action));
+    }
+
+    private async Task ExecuteResultAsync(QueryResult result)
+    {
+        if (!m_executionGate.Wait(0))
+            return;
+
+        try
+        {
+            var executionTask = QueryExecutionService.ExecuteAsync(result, this);
+            if (result.PrimaryAction?.ShouldHideLauncher == true && !executionTask.IsCompleted)
+                HideLauncher();
+
+            var executionResult = await executionTask;
+            ApplyExecutionResult(executionResult);
+        }
+        finally
+        {
+            m_executionGate.Release();
+        }
     }
 
     private void ApplyExecutionResult(QueryExecutionResult executionResult)
