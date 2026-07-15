@@ -157,6 +157,16 @@ public sealed class CommandQueryProvider : IQueryProvider
         AddFolderCommand(commands, "documents", "Open the Documents folder.", targets.DocumentsDirectory);
         AddFolderCommand(commands, "downloads", "Open the Downloads folder.", targets.DownloadsDirectory);
         AddFolderCommand(commands, "home", "Open the home folder.", targets.HomeDirectory);
+
+        if (m_isWindows)
+        {
+            AddFolderCommand(commands, "appdata", "Open the roaming app data folder.", targets.AppDataDirectory);
+            AddFolderCommand(commands, "localappdata", "Open the local app data folder.", targets.LocalAppDataDirectory);
+            AddFolderCommand(commands, "programdata", "Open the shared program data folder.", targets.ProgramDataDirectory);
+            AddFolderCommand(commands, "programfiles", "Open the Program Files folder.", targets.ProgramFilesDirectory);
+            AddFolderCommand(commands, "temp", "Open the temporary files folder.", targets.TempDirectory);
+        }
+
         return commands;
     }
 
@@ -321,7 +331,12 @@ public sealed class CommandQueryProvider : IQueryProvider
             ToDirectoryInfo(homePath),
             ToDirectoryInfo(desktopPath),
             ToDirectoryInfo(documentsPath),
-            ToDirectoryInfo(string.IsNullOrWhiteSpace(homePath) ? null : Path.Combine(homePath, "Downloads")));
+            ToDirectoryInfo(string.IsNullOrWhiteSpace(homePath) ? null : Path.Combine(homePath, "Downloads")),
+            ToDirectoryInfo(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)),
+            ToDirectoryInfo(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)),
+            ToDirectoryInfo(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData)),
+            ToDirectoryInfo(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles)),
+            ToDirectoryInfo(Path.GetTempPath()));
     }
 
     private static DirectoryInfo ToDirectoryInfo(string path) =>
@@ -333,12 +348,22 @@ public sealed class CommandQueryProvider : IQueryProvider
             DirectoryInfo homeDirectory,
             DirectoryInfo desktopDirectory,
             DirectoryInfo documentsDirectory,
-            DirectoryInfo downloadsDirectory)
+            DirectoryInfo downloadsDirectory,
+            DirectoryInfo appDataDirectory = null,
+            DirectoryInfo localAppDataDirectory = null,
+            DirectoryInfo programDataDirectory = null,
+            DirectoryInfo programFilesDirectory = null,
+            DirectoryInfo tempDirectory = null)
         {
             HomeDirectory = homeDirectory;
             DesktopDirectory = desktopDirectory;
             DocumentsDirectory = documentsDirectory;
             DownloadsDirectory = downloadsDirectory;
+            AppDataDirectory = appDataDirectory;
+            LocalAppDataDirectory = localAppDataDirectory;
+            ProgramDataDirectory = programDataDirectory;
+            ProgramFilesDirectory = programFilesDirectory;
+            TempDirectory = tempDirectory;
         }
 
         public DirectoryInfo HomeDirectory { get; }
@@ -348,5 +373,15 @@ public sealed class CommandQueryProvider : IQueryProvider
         public DirectoryInfo DocumentsDirectory { get; }
 
         public DirectoryInfo DownloadsDirectory { get; }
+
+        public DirectoryInfo AppDataDirectory { get; }
+
+        public DirectoryInfo LocalAppDataDirectory { get; }
+
+        public DirectoryInfo ProgramDataDirectory { get; }
+
+        public DirectoryInfo ProgramFilesDirectory { get; }
+
+        public DirectoryInfo TempDirectory { get; }
     }
 }

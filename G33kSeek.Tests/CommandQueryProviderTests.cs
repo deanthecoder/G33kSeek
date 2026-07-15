@@ -84,6 +84,27 @@ public class CommandQueryProviderTests
     }
 
     [Test]
+    public async Task QueryAsyncReturnsWindowsSpecialFolderCommands()
+    {
+        using var tempDirectory = new TempDirectory();
+        var provider = new CommandQueryProvider(
+            isMacOS: false,
+            isWindows: true,
+            guidFactory: Guid.NewGuid,
+            ipAddressesAccessor: () => [],
+            commonFolderTargetsAccessor: () => CreateCommonFolderTargets(tempDirectory),
+            logFileAccessor: () => tempDirectory.GetFile("log.txt"));
+
+        var response = await provider.QueryAsync(new QueryRequest(">", string.Empty, ">"), CancellationToken.None);
+
+        Assert.That(
+            response.Results.Where(result => result.TrailingText == "Folder").Select(result => result.Title),
+            Is.EqualTo(new[] { "appdata", "desktop", "documents", "downloads", "home", "localappdata", "programdata", "programfiles", "temp" }));
+        Assert.That(response.Results.Single(result => result.Title == "programfiles").PrimaryAction?.Payload,
+            Is.EqualTo(tempDirectory.GetDir("ProgramFiles").FullName));
+    }
+
+    [Test]
     public async Task QueryAsyncReturnsMacSleepCommand()
     {
         using var tempDirectory = new TempDirectory();
@@ -270,6 +291,25 @@ public class CommandQueryProviderTests
         documentsDirectory.Create();
         var downloadsDirectory = homeDirectory.GetDir("Downloads");
         downloadsDirectory.Create();
-        return new CommandQueryProvider.CommonFolderTargets(homeDirectory, desktopDirectory, documentsDirectory, downloadsDirectory);
+        var appDataDirectory = homeDirectory.GetDir("AppData/Roaming");
+        appDataDirectory.Create();
+        var localAppDataDirectory = homeDirectory.GetDir("AppData/Local");
+        localAppDataDirectory.Create();
+        var programDataDirectory = tempDirectory.GetDir("ProgramData");
+        programDataDirectory.Create();
+        var programFilesDirectory = tempDirectory.GetDir("ProgramFiles");
+        programFilesDirectory.Create();
+        var tempFilesDirectory = tempDirectory.GetDir("Temp");
+        tempFilesDirectory.Create();
+        return new CommandQueryProvider.CommonFolderTargets(
+            homeDirectory,
+            desktopDirectory,
+            documentsDirectory,
+            downloadsDirectory,
+            appDataDirectory,
+            localAppDataDirectory,
+            programDataDirectory,
+            programFilesDirectory,
+            tempFilesDirectory);
     }
 }
