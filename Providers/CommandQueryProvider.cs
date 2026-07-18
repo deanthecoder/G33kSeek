@@ -207,7 +207,7 @@ public sealed class CommandQueryProvider : IQueryProvider
             commands.Add(new CommandDefinition("shutdown", "Shut down Windows immediately.", "shutdown", "/s /t 0", "Shutdown requested."));
             commands.Add(new CommandDefinition("restart", "Restart Windows immediately.", "shutdown", "/r /t 0", "Restart requested."));
             commands.Add(new CommandDefinition("logoff", "Log off the current Windows session.", "shutdown", "/l", "Log off requested."));
-            commands.Add(new CommandDefinition("sleep", "Put Windows to sleep.", "powershell.exe", "-NoProfile -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)\"", "Sleep requested."));
+            commands.Add(new CommandDefinition("sleep", "Put Windows to sleep.", "powershell.exe", "-NoProfile -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $true, $false)\"", "Sleep requested."));
         }
 
         return commands;

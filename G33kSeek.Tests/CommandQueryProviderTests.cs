@@ -137,7 +137,7 @@ public class CommandQueryProviderTests
         Assert.That(response.Results[0].Title, Is.EqualTo("sleep"));
         Assert.That(response.Results[0].PrimaryAction?.Kind, Is.EqualTo(QueryActionKind.RunProcess));
         Assert.That(response.Results[0].PrimaryAction?.Payload, Is.EqualTo("powershell.exe"));
-        Assert.That(response.Results[0].PrimaryAction?.Arguments, Does.Contain("SetSuspendState"));
+        Assert.That(response.Results[0].PrimaryAction?.Arguments, Is.EqualTo("-NoProfile -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $true, $false)\""));
     }
 
     [Test]
