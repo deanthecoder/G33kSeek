@@ -32,7 +32,7 @@ internal static class FileSystemResultActionFactory
                 QueryActionKind.RevealPath,
                 fullPath,
                 successMessage: $"Revealing {displayName}.",
-                displayText: OperatingSystem.IsWindows() ? "Reveal in Explorer" : "Reveal in Finder"),
+                displayText: OperatingSystem.IsWindows() ? "Reveal in Browse" : "Reveal in Finder"),
             new QueryActionDescriptor(
                 QueryActionKind.CopyText,
                 fullPath,

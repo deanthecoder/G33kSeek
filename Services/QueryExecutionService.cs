@@ -28,10 +28,10 @@ namespace G33kSeek.Services;
 /// </remarks>
 public static class QueryExecutionService
 {
-    internal static Action<FileInfo> FileOpener { get; set; } = file => file.OpenWithDefaultViewer();
-    internal static Action<DirectoryInfo> DirectoryOpener { get; set; } = directory => directory.Explore();
-    internal static Action<FileInfo> FileRevealer { get; set; } = file => file.Explore();
-    internal static Action<DirectoryInfo> DirectoryRevealer { get; set; } = directory => directory.Explore();
+    internal static Action<FileInfo> FileOpener { get; set; } = OpenFile;
+    internal static Action<DirectoryInfo> DirectoryOpener { get; set; } = OpenDirectory;
+    internal static Action<FileInfo> FileRevealer { get; set; } = RevealFile;
+    internal static Action<DirectoryInfo> DirectoryRevealer { get; set; } = RevealDirectory;
     internal static Action<Uri> UriOpener { get; set; } = uri => uri.Open();
     internal static Action<ProcessStartInfo> ProcessStarter { get; set; } = processStartInfo => Process.Start(processStartInfo);
     internal static Action ExitApplication { get; set; }
@@ -155,6 +155,30 @@ public static class QueryExecutionService
         {
             DTC.Core.Logger.Instance.Exception("Manual index refresh failed.", ex);
         }
+    }
+
+    private static void OpenFile(FileInfo file)
+    {
+        if (!BrowseLauncher.TryLaunch(file.FullName))
+            file.OpenWithDefaultViewer();
+    }
+
+    private static void OpenDirectory(DirectoryInfo directory)
+    {
+        if (!BrowseLauncher.TryLaunch(directory.FullName))
+            directory.Explore();
+    }
+
+    private static void RevealFile(FileInfo file)
+    {
+        if (!BrowseLauncher.TryLaunch(file.FullName))
+            file.Explore();
+    }
+
+    private static void RevealDirectory(DirectoryInfo directory)
+    {
+        if (!BrowseLauncher.TryLaunch(directory.FullName))
+            directory.Explore();
     }
 
     private static async Task<DirectoryInfo> PickSearchRootAsync(CancellationToken cancellationToken)
