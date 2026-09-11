@@ -55,11 +55,11 @@ public class QueryExecutionServiceTests
     }
 
     [Test]
-    public async Task ExecuteAsyncUsesFileOpenerForFilePaths()
+    public async Task ExecuteAsyncUsesFileOpenerForShortcutPaths()
     {
         using var tempDirectory = new TempDirectory();
-        var reportFile = tempDirectory.GetFile("report.txt");
-        reportFile.WriteAllText("report");
+        var shortcutFile = tempDirectory.GetFile("Browse.lnk");
+        shortcutFile.WriteAllText("shortcut");
         FileInfo openedFile = null;
 
         QueryExecutionService.FileOpener = file => openedFile = file;
@@ -67,12 +67,12 @@ public class QueryExecutionServiceTests
 
         var result = await QueryExecutionService.ExecuteAsync(
             new QueryResult(
-                "report.txt",
-                primaryAction: new QueryActionDescriptor(QueryActionKind.OpenPath, reportFile.FullName)),
+                "Browse.lnk",
+                primaryAction: new QueryActionDescriptor(QueryActionKind.OpenPath, shortcutFile.FullName)),
             null);
 
         Assert.That(result.IsSuccess, Is.True);
-        Assert.That(openedFile?.FullName, Is.EqualTo(reportFile.FullName));
+        Assert.That(openedFile?.FullName, Is.EqualTo(shortcutFile.FullName));
     }
 
     [Test]

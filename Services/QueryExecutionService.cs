@@ -159,26 +159,22 @@ public static class QueryExecutionService
 
     private static void OpenFile(FileInfo file)
     {
-        if (!BrowseLauncher.TryLaunch(file.FullName))
-            file.OpenWithDefaultViewer();
+        file.OpenWithDefaultViewer();
     }
 
     private static void OpenDirectory(DirectoryInfo directory)
     {
-        if (!BrowseLauncher.TryLaunch(directory.FullName))
-            directory.Explore();
+        directory.Explore();
     }
 
     private static void RevealFile(FileInfo file)
     {
-        if (!BrowseLauncher.TryLaunch(file.FullName))
-            file.Explore();
+        file.Explore();
     }
 
     private static void RevealDirectory(DirectoryInfo directory)
     {
-        if (!BrowseLauncher.TryLaunch(directory.FullName))
-            directory.Explore();
+        directory.Explore();
     }
 
     private static async Task<DirectoryInfo> PickSearchRootAsync(CancellationToken cancellationToken)
